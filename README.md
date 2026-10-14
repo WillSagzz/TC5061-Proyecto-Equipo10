@@ -27,7 +27,7 @@ Proyecto MiBici
 │                         `1.0-jqp-initial-data-exploration`.
 │
 ├── pyproject.toml     <- Project configuration file with package metadata for 
-│                         feature engineering and configuration for tools like black
+│                         feature_engineering and configuration for tools like black
 │
 ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
 │
@@ -39,9 +39,9 @@ Proyecto MiBici
 │
 ├── setup.cfg          <- Configuration file for flake8
 │
-└── feature engineering   <- Source code for use in this project.
+└── feature_engineering   <- Source code for use in this project.
     │
-    ├── __init__.py             <- Makes feature engineering a Python module
+    ├── __init__.py             <- Makes feature_engineering a Python module
     │
     ├── config.py               <- Store useful variables and configuration
     │

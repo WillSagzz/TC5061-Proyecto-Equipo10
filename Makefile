@@ -60,7 +60,7 @@ create_environment:
 ## Make dataset
 .PHONY: data
 data: requirements
-	$(PYTHON_INTERPRETER) feature engineering/dataset.py
+	$(PYTHON_INTERPRETER) feature_engineering/dataset.py
 
 
 #################################################################################
