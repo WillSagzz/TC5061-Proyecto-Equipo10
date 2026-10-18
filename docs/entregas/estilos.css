@@ -112,7 +112,7 @@ blockquote p:last-child { margin-bottom: 0; }
 }
 .pendiente p:last-child { margin-bottom: 0; }
 
-.pagebreak { page-break-after: always; break-after: page; }
+.pagebreak { page-break-before: always; break-before: page; }
 
 .mermaid { text-align: center; page-break-inside: avoid; background: none; border: none; padding: 0; }
 .mermaid svg { max-width: 100% !important; height: auto; }
