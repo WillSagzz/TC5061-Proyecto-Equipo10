@@ -19,7 +19,6 @@ app = typer.Typer()
 # MARK: Fetch URL
 # (Website or File)
 def get_url(url:str):
-    # logger.info("Fetching website...")
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
     }
@@ -49,8 +48,8 @@ def get_paths(site_html:str):
 # MARK: Filter by date
 def filter_paths(paths:list, start_date:str, end_date:str):
     logger.info('Filtering by date range...')
-    logger.info(f'Start date: {start_date}')
-    logger.info(f'End date: {end_date}')
+    logger.debug(f'Start date: {start_date}')
+    logger.debug(f'End date: {end_date}')
 
     # Path & date dataframe
     df_paths = pandas.DataFrame(paths, columns=['path'])
@@ -134,6 +133,7 @@ def main(
     base_url = 'https://mibici.net'
 
     # Fetch website
+    logger.info('Fetching website...')
     source_url = f'{base_url}/es/datos-abiertos/'
     r = get_url(source_url)
 
