@@ -1,5 +1,6 @@
 # Data
 /data/
+/notebooks/*.csv
 
 # MLflow: salida de los experimentos, no se versiona
 mlruns/
