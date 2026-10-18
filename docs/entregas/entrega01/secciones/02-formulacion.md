@@ -1,6 +1,6 @@
 # Formulación del problema
 
-Para cada pregunta de negocio se establece qué se predice o agrupa, su granularidad, el horizonte temporal y, en el caso de P2, la aproximación del riesgo ante la falta de datos de inventario en tiempo real. Con ello, cada formulación se vincula directamente con las decisiones del operador de flota, del equipo de rebalanceo y del área de planeación urbana.
+Para cada pregunta de negocio se establece qué se predice o agrupa, su granularidad, el horizonte temporal y la aproximación del riesgo ante la falta de datos de inventario en tiempo real. Con ello, cada formulación se vincula directamente con las decisiones del operador de flota, del equipo de rebalanceo y del área de planeación urbana.
 
 ## P1. ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro? (Regresión)
 
@@ -13,12 +13,6 @@ Para cada pregunta de negocio se establece qué se predice o agrupa, su granular
 ## P2. ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes disponibles en un periodo futuro? (Clasificación)
 
 **¿Qué se predice, con qué granularidad y horizonte?** Se predice una de tres categorías: *riesgo de vaciarse*, *riesgo de llenarse* o *sin riesgo*. La granularidad espacial es por estación individual y la granularidad temporal es de intervalos de 3 horas (8 intervalos por día; cada predicción habla de un bloque de 3 horas, por ejemplo: estación 25, intervalo de 9:00 a 12:00, clasificación: riesgo de vaciarse). El horizonte de predicción es de 3 horas hacia adelante: al cierre de cada intervalo se pronostica el riesgo de cada estación en el intervalo siguiente, usando solo los viajes ocurridos hasta ese momento. Así el equipo de rebalanceo puede intervenir la estación antes de que se vacíe o se llene.
-
-<div class="pendiente">
-
-**Pendiente de decisión del equipo (texto en revisión en el Word original).** Existe una segunda versión de la formulación de P2 que debe conciliarse con la anterior, ya que el *pipeline*, el ML Canvas y la sección de modelos usan esta variante: *"Se predice una categoría binaria ("En riesgo" o "Sin riesgo") junto con su probabilidad de ocurrencia, indicando si una estación sufrirá desabasto de bicicletas o saturación total de sus espacios de anclaje. La granularidad espacial es por estación individual, la granularidad temporal es de una hora y el horizonte de predicción es de 1 a 3 horas hacia adelante, brindando el tiempo de anticipación necesario para que el personal operativo pueda trasladarse e intervenir la estación antes de que el problema ocurra."* Hay que elegir una sola definición (tres clases en bloques de 3 h, o binaria por hora) y usarla de forma consistente en todo el documento y en `config.py`.
-
-</div>
 
 **Definición y justificación de la aproximación del riesgo.** Los datos de MiBici contienen el registro histórico de cada viaje y la capacidad total de anclajes de cada estación, pero no incluyen el inventario en tiempo real de cuántas bicicletas hay disponibles en cada minuto. Para resolver esta limitación de forma objetiva, el riesgo se aproxima midiendo la presión del flujo neto por intervalo en relación con el tamaño físico de cada estación:
 
