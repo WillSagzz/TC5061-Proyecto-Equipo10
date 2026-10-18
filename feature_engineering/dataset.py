@@ -4,7 +4,7 @@ from loguru import logger
 from tqdm import tqdm
 import typer
 
-from feature_engineering.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, DATA_DIR
+from feature_engineering.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, DATA_DIR, START_DATE, END_DATE
 
 import requests
 from bs4 import BeautifulSoup
@@ -19,7 +19,7 @@ app = typer.Typer()
 # MARK: Fetch URL
 # (Website or File)
 def get_url(url:str):
-    logger.info("Fetching website...")
+    # logger.info("Fetching website...")
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
     }
@@ -49,8 +49,8 @@ def get_paths(site_html:str):
 # MARK: Filter by date
 def filter_paths(paths:list, start_date:str, end_date:str):
     logger.info('Filtering by date range...')
-    logger.info(f' - Start date: {start_date}')
-    logger.info(f' - End date: {end_date}')
+    logger.info(f'Start date: {start_date}')
+    logger.info(f'End date: {end_date}')
 
     # Path & date dataframe
     df_paths = pandas.DataFrame(paths, columns=['path'])
@@ -62,7 +62,7 @@ def filter_paths(paths:list, start_date:str, end_date:str):
 
     # Filter by date
     df_filtered = df_paths.query(
-        '(date >= @date_start) and (date <= @date_end)'
+        '(date >= @start_date) and (date <= @end_date)'
     )
     paths_list = df_filtered.path.to_list()
 
@@ -100,7 +100,7 @@ def read_raw_data(input_path:Path, file_type:str='month'):
     df_list = []
     for filename in filenames:
         filepath = f'{input_path}/{filename}'
-        df = pandas.read_csv(filepath)
+        df = pandas.read_csv(filepath, encoding='latin-1')
         df_list.append(df)
 
     if file_type=='nom': return df
@@ -125,8 +125,8 @@ def main(
     data_path: Path = DATA_DIR,
     input_path: Path = RAW_DATA_DIR,
     output_path: Path = PROCESSED_DATA_DIR,
-    start_date: str = '',
-    end_date: str = ''
+    start_date: str = START_DATE,
+    end_date: str = END_DATE
 ):
     logger.info("Fetching dataset...")
     logger.info(f'Input path: {input_path}')
@@ -142,7 +142,7 @@ def main(
 
     # Filter by date
     paths_list = filter_paths(file_paths['Months'], start_date, end_date)
-    paths_list.append( file_paths['Nom'] )
+    paths_list.append( file_paths['Nom'][0] )
 
     # Download files
     download_files(base_url, paths_list, input_path)
