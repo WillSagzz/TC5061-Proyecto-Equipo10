@@ -1,6 +1,15 @@
 # Data
 /data/
 
+# MLflow: salida de los experimentos, no se versiona
+mlruns/
+mlartifacts/
+
+# Modelos serializados: se regeneran con el código de entrenamiento
+*.pkl
+*.pickle
+*.joblib
+
 # Mac OS-specific storage files
 .DS_Store
 
