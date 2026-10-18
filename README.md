@@ -41,7 +41,7 @@ sistema de bicicleta pública del Área Metropolitana de Guadalajara.
 ```
 ├── Makefile              <- Comandos de conveniencia: `make data`, `make lint`, `make format`
 ├── README.md             <- Este documento
-├── pyproject.toml        <- Metadatos del paquete `feature_engineering` y configuración de Ruff
+├── pyproject.toml        <- Metadatos del paquete `mibici` y configuración de Ruff
 ├── requirements.txt      <- Dependencias para reproducir el entorno
 │
 ├── data                  <- Excluida de Git; la genera el comando de ingesta
@@ -61,8 +61,8 @@ sistema de bicicleta pública del Área Metropolitana de Guadalajara.
 ├── reports               <- Análisis generados (HTML, PDF, etc.)
 │   └── figures           <- Gráficas y figuras para los reportes
 │
-└── feature_engineering   <- Código fuente del proyecto
-    ├── __init__.py       <- Hace de `feature_engineering` un módulo de Python
+└── mibici                <- Código fuente del proyecto
+    ├── __init__.py       <- Hace de `mibici` un módulo de Python
     ├── config.py         <- Rutas, fechas y semillas: la única fuente de configuración
     ├── dataset.py        <- Ingesta reproducible: descarga, normaliza y guarda en Parquet
     ├── features.py       <- Funciones reutilizables de feature engineering
@@ -112,7 +112,7 @@ git pull origin main
 git checkout -b feature/ingesta-parquet
 
 # 3. Trabajar y commitear en incrementos pequeños
-git add feature_engineering/dataset.py
+git add mibici/dataset.py
 git commit -m "feat(dataset): normaliza nombres de columnas al leer los CSV"
 
 # 4. Publicar la rama
@@ -320,7 +320,7 @@ Ejecuta `make format` **antes de cada commit**. Un PR cuyo `make lint` falle no 
 |---|---|---|
 | `line-length` | `99` | PEP 8 sugiere 79; el equipo adopta los 99 de la plantilla, desviación que la propia PEP 8 permite cuando el equipo lo acuerda |
 | `extend-select` | `["I"]` | activa el ordenamiento de imports |
-| `known-first-party` | `["feature_engineering"]` | separa los imports del proyecto de los de terceros |
+| `known-first-party` | `["mibici"]` | separa los imports del proyecto de los de terceros |
 | `force-sort-within-sections` | `true` | mezcla `import x` y `from x import y` en un solo orden alfabético |
 
 ### 2. Nomenclatura
@@ -352,7 +352,7 @@ import pandas as pd
 from tqdm import tqdm
 import typer
 
-from feature_engineering.config import PROCESSED_DATA_DIR, RAW_DATA_DIR   # 3. del proyecto
+from mibici.config import PROCESSED_DATA_DIR, RAW_DATA_DIR   # 3. del proyecto
 ```
 
 Prohibido `from modulo import *`.
@@ -404,11 +404,11 @@ def load_stations(path: Path) -> pd.DataFrame:
 ### 6. Configuración centralizada
 
 **Ninguna ruta, fecha ni semilla se escribe a mano en más de un archivo.** Todo vive en
-[`feature_engineering/config.py`](feature_engineering/config.py) y se importa desde ahí:
+[`mibici/config.py`](mibici/config.py) y se importa desde ahí:
 
 ```python
 # Correcto
-from feature_engineering.config import RAW_DATA_DIR, RANDOM_SEED
+from mibici.config import RAW_DATA_DIR, RANDOM_SEED
 
 # Incorrecto: ruta absoluta y semilla sueltas en el código
 df = pd.read_csv("C:/Users/yo/Desktop/proyecto/data/raw/datos_2024_01.csv")
@@ -434,7 +434,7 @@ Nunca registrar credenciales ni datos personales en los logs.
 ### 8. Notebooks
 
 Los notebooks son **solo para exploración**; la lógica final vive en el módulo
-`feature_engineering/`. Se nombran con la convención de la plantilla CCDS:
+`mibici/`. Se nombran con la convención de la plantilla CCDS:
 
 ```
 numero.version-iniciales-descripcion-corta.ipynb
