@@ -386,6 +386,10 @@ def compilar(entrega: Path, generar_pdf: bool = True, abrir: bool = False) -> in
     if not html_a_pdf(html_final, pdf_final):
         return 2
     print(f"  -> {mostrar(pdf_final)}")
+    # Copia del PDF final en la raiz de la entrega: build/ esta ignorado por Git y este si se versiona.
+    pdf_entrega = entrega / pdf_final.name
+    shutil.copy2(pdf_final, pdf_entrega)
+    print(f"  -> {mostrar(pdf_entrega)}")
     if abrir:
         webbrowser.open(pdf_final.resolve().as_uri())
     return 0

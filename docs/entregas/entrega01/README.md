@@ -23,7 +23,8 @@ entrega01/
 │   ├── 09-repositorio.md         (TODO: estructura, buenas prácticas, flujo Git, integrantes)
 │   └── 10-referencias.md         (TODO: APA 7)
 ├── figuras/             <- capturas e imágenes exclusivas de esta entrega (logo, capturas de MLflow)
-└── build/               <- SALIDA generada (ignorada por Git): .md compilado, .html y .pdf
+├── build/               <- SALIDA generada (ignorada por Git): .md compilado, .html y .pdf
+└── TC5061_Propuesta_Proyecto_Equipo10.pdf  <- copia del PDF final que sí se versiona (la deja el script)
 ```
 
 Las imágenes compartidas con el repositorio (ML Canvas, diagrama de arquitectura) viven en
