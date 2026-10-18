@@ -3,14 +3,14 @@
 %% Colores: azul = en Git · naranja = regenerado en cada máquina · verde = registro en MLflow.
 flowchart TB
 
-  MAN["<b>Manifiesto de datos (Git)</b><br/>mibici/data_versions/2026-10.json"]
+  MAN["<b>Descriptor de datos (Git)</b><br/>mibici/datapackage.json · version 2026-10"]
   COMMIT["<b>Commit del código (Git)</b><br/>mibici/ · config.py"]
   REQ["<b>Entorno (Git)</b><br/>requirements.txt con versiones fijas"]
 
   DATA[("<b>Datos regenerados</b><br/>data/processed · tablas P1 · P2 · P3")]
   RECEIPT["<b>Recibo de construcción</b><br/>data_version · commit · filas · esquema"]
 
-  RUN["<b>Run de MLflow</b><br/>params: data_version · start_date · end_date · fechas de corte · random_seed · hiperparámetros<br/>tags: team · question · git_commit<br/>métricas: test_mae · test_rmse · test_recall · test_f1 · …<br/>artefactos: figuras · modelo · manifiesto"]
+  RUN["<b>Run de MLflow</b><br/>params: data_version · start_date · end_date · fechas de corte · random_seed · hiperparámetros<br/>tags: team · question · git_commit<br/>métricas: test_mae · test_rmse · test_recall · test_f1 · …<br/>artefactos: figuras · modelo · descriptor<br/>dataset (log_input): nombre · digest · fuente"]
 
   MAN -- "make data verifica los hashes" --> DATA
   COMMIT -- "make data · make features" --> DATA
