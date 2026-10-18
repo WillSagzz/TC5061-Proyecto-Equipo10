@@ -52,7 +52,7 @@ sistema de bicicleta pública del Área Metropolitana de Guadalajara.
 │
 ├── docs                  <- Proyecto mkdocs por defecto de la plantilla
 │
-├── models                <- Modelos entrenados y serializados
+├── models                <- Modelos entrenados y serializados; excluidos de Git
 │
 ├── notebooks             <- Solo exploración. Convención: `1.0-iniciales-descripcion.ipynb`
 │
@@ -87,10 +87,8 @@ mensajes de commit siguen **[Conventional Commits 1.0.0](https://www.conventiona
 `main` siempre debe estar en un estado funcional: cualquier integrante puede clonarla y
 reproducir la ingesta y el experimento base. Por eso **nadie hace `push` directo a `main`**.
 
-La protección se configura en GitHub en *Settings → Branches → Add classic branch protection rule*,
-con `main` como patrón.
-
-**Marcar:**
+`main` está protegida en GitHub con una *classic branch protection rule* (*Settings → Branches*)
+que usa `main` como patrón. La regla tiene activadas estas opciones:
 
 - **Require a pull request before merging** — bloquea el `push` directo.
   - **Require approvals: 1** — otro integrante debe aprobar.
@@ -98,10 +96,10 @@ con `main` como patrón.
 - **Require conversation resolution before merging** — no se mezcla con comentarios abiertos.
 - **Do not allow bypassing the above settings** — la regla aplica también al dueño del repositorio.
 
-**Dejar sin marcar:**
+Y mantiene desactivadas estas dos:
 
-- **Allow force pushes** — protege el historial.
-- **Allow deletions** — impide borrar la rama.
+- **Allow force pushes** — con lo que el historial no puede reescribirse.
+- **Allow deletions** — con lo que la rama no puede borrarse.
 
 ### 2. El ciclo de trabajo
 
@@ -151,9 +149,6 @@ La única rama sin prefijo es `main`.
 | `chore/` | tareas que no son código: dependencias, configuración y **documentación** |
 | `ai/`, `claude/`, `codex/`, `copilot/`, `cursor/` | ramas generadas por un agente de IA |
 
-**Extensión del equipo:** `exp/` para experimentos y *baselines* registrados en MLflow
-(`exp/baseline-p1-regresion`).
-
 #### Reglas de escritura
 
 1. **Solo minúsculas, dígitos y guiones.** Los puntos se permiten en la descripción, normalmente para versiones.
@@ -198,8 +193,8 @@ página, una línea en blanco después del cuerpo.
 
 | Tipo | Cuándo se usa |
 |---|---|
-| `feat` | funcionalidad nueva *(obligatorio por la especificación)* |
-| `fix` | corrección de un defecto *(obligatorio por la especificación)* |
+| `feat` | funcionalidad nueva |
+| `fix` | corrección de un defecto |
 | `docs` | documentación, incluido este README |
 | `refactor` | reescritura sin cambiar el comportamiento |
 | `test` | pruebas |
@@ -208,7 +203,9 @@ página, una línea en blanco después del cuerpo.
 | `ci` | integración continua |
 | `chore` | mantenimiento y tareas que no tocan el código fuente |
 | `revert` | revierte un commit anterior, citando su SHA en el pie |
-| `exp` | *(extensión del equipo)* experimento o *baseline* registrado en MLflow |
+
+La especificación solo obliga a `feat` y `fix`; el resto son los tipos que recomienda
+`@commitlint/config-conventional`, citado por la propia especificación.
 
 El **ámbito** es un sustantivo entre paréntesis que nombra la parte del código afectada.
 Ámbitos del proyecto: `dataset`, `features`, `config`, `modeling`, `mlflow`, `notebooks`,
@@ -219,7 +216,7 @@ El **ámbito** es un sustantivo entre paréntesis que nombra la parte del códig
 ```
 feat(dataset): descarga los CSV mensuales y los guarda en Parquet
 fix(features): evita usar información posterior al momento de la predicción
-exp(mlflow): registra el baseline de P1 con sus parámetros y métricas
+feat(mlflow): registra el baseline de P1 con sus parámetros y métricas
 docs(readme): documenta el flujo de trabajo con Git/GitHub
 chore(deps): fija las versiones de scikit-learn y mlflow
 ```
@@ -271,6 +268,7 @@ Lo que queda fuera de este PR, si aplica.
 **Qué revisa quien aprueba:**
 
 - El código corre desde un clon limpio siguiendo el README.
+- `make lint` pasa sin errores.
 - No se versionan datos de MiBici, `mlruns/`, modelos ni credenciales.
 - Las rutas, fechas y semillas viven en `config.py`, no repetidas en varios archivos.
 - Las funciones nuevas de `features.py` tienen *docstring* y no usan información del futuro.
@@ -278,13 +276,14 @@ Lo que queda fuera de este PR, si aplica.
 
 ### 6. Qué nunca entra al repositorio
 
-Lo siguiente nunca se versiona y debe estar excluido en el [`.gitignore`](.gitignore):
+Se versiona el **código que produce** los datos, los experimentos y los modelos; nunca el
+**resultado de ejecutarlo**. Lo siguiente está excluido en el [`.gitignore`](.gitignore):
 
 | Excluido | Motivo |
 |---|---|
-| `data/` | los datos de MiBici se reconstruyen con el comando de ingesta, no se versionan |
-| `mlruns/`, `mlartifacts/` | los registra MLflow localmente |
-| `models/*.pkl` y otros modelos serializados | son artefactos, no código fuente |
+| `data/` | los datos de MiBici se reconstruyen con el comando de ingesta |
+| `mlruns/`, `mlartifacts/` | son la salida de correr un experimento; MLflow los guarda localmente y cada *run* lleva como etiqueta el commit que lo produjo, así que el código de ese commit basta para reproducirlo |
+| `*.pkl`, `*.joblib` y otros modelos serializados | se regeneran ejecutando el código de entrenamiento |
 | `.env` y cualquier credencial | nunca deben salir del equipo local |
 
 Si algo de esto llega a `main`, borrarlo en un commit posterior **no** lo quita del historial:
@@ -386,10 +385,10 @@ def build_hourly_trip_counts(
     """
 ```
 
-**Regla crítica:** ninguna variable puede usar información posterior
-al momento de la predicción. Si una función calcula una media móvil, un rezago o cualquier
-agregado temporal, el *docstring* debe decir explícitamente qué ventana usa y por qué no hay
-fuga de información del futuro.
+**Regla crítica:** ninguna variable puede usar información posterior al momento de la
+predicción. Si una función calcula una media móvil, un rezago o cualquier agregado temporal,
+el *docstring* debe decir explícitamente qué ventana usa y por qué no hay fuga de información
+del futuro.
 
 ### 5. Anotaciones de tipo
 
@@ -461,7 +460,9 @@ limpia sus salidas para que el *diff* sea legible.
 | Guillermo Sáenz González | A00823049 | TBD | WillSagzz |
 | Victor Yoguel Salazar Alanis | A01797950 | TBD | CFOP2357 |
 
-**Declaración de uso de IA:** Anthropic. (2026). *Claude Code (Claude Opus 5.5 y Claude Fable 5)*
-[Modelo de lenguaje grande], utilizado para edición de código y gestión del repositorio bajo un
-esquema *human-in-the-loop* (decisiones dirigidas, revisadas y aprobadas por el autor).
-https://claude.com/claude-code
+**Declaración de uso de IA.** El equipo usó asistentes de IA para edición de código y gestión
+del repositorio bajo un esquema *human-in-the-loop*: las decisiones fueron dirigidas, revisadas
+y aprobadas por los autores.
+
+- Anthropic. (2026). *Claude Code (Claude Opus 5 y Claude Fable 5.1)* [Modelo de lenguaje grande]. https://claude.com/claude-code
+- OpenAI. (2026). *ChatGPT* [Modelo de lenguaje grande]. https://chatgpt.com
