@@ -198,3 +198,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# Salidas compiladas de las entregas (md/html/pdf generados por docs/entregas/build.py)
+docs/entregas/**/build/
