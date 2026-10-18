@@ -2,6 +2,15 @@
 /data/
 /notebooks/*.csv
 
+# MLflow: salida de los experimentos, no se versiona
+mlruns/
+mlartifacts/
+
+# Modelos serializados: se regeneran con el código de entrenamiento
+*.pkl
+*.pickle
+*.joblib
+
 # Mac OS-specific storage files
 .DS_Store
 
@@ -190,3 +199,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# Salidas compiladas de las entregas (md/html/pdf generados por docs/entregas/build.py)
+docs/entregas/**/build/
