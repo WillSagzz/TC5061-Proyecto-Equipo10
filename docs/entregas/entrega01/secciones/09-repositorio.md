@@ -13,7 +13,7 @@ Repositorio: <https://github.com/WillSagzz/TC5061-Proyecto-Equipo10>
 TODO: insertar la captura de la estructura del repositorio en GitHub (`figuras/repositorio_estructura.png`).
 
 <!--
-![Figura 6. Estructura del repositorio TC5061-Proyecto-Equipo10 en GitHub.](../figuras/repositorio_estructura.png)
+![Figura 8. Estructura del repositorio TC5061-Proyecto-Equipo10 en GitHub.](../figuras/repositorio_estructura.png)
 -->
 
 ## Buenas prácticas aplicadas

@@ -18,7 +18,7 @@ entrega01/
 │   ├── 04-datos.md               (rango, fuentes, tamaño, variables, condiciones de uso, partición)
 │   ├── 05-pipeline.md
 │   ├── 06-modelos-metricas.md
-│   ├── 07-arquitectura.md        (TODO: diagrama + tabla de herramientas)
+│   ├── 07-arquitectura.md        (principios, diagrama, componentes y herramientas, trazabilidad)
 │   ├── 08-experimento-base.md    (TODO: diseño, resultados, capturas de MLflow)
 │   ├── 09-repositorio.md         (TODO: estructura, buenas prácticas, flujo Git, integrantes)
 │   └── 10-referencias.md         (TODO: APA 7)
@@ -26,8 +26,17 @@ entrega01/
 └── build/               <- SALIDA generada (ignorada por Git): .md compilado, .html y .pdf
 ```
 
-Las imágenes compartidas con el repositorio (ML Canvas, diagrama de arquitectura) viven en
+Las imágenes compartidas con el repositorio (ML Canvas, diagramas de arquitectura y trazabilidad) viven en
 `references/`, como pide la actividad, y se referencian con rutas relativas desde la sección.
+
+Los diagramas se escriben en Mermaid (`references/arquitectura.mmd`, `references/trazabilidad.mmd`) y se
+exportan a PNG con mermaid-cli, sin instalar nada de forma permanente (requiere Node y Microsoft Edge o Chrome):
+
+```bash
+npx -y -p @mermaid-js/mermaid-cli mmdc -i references/arquitectura.mmd -o references/arquitectura.png -b white -s 2 \n    -c docs/entregas/mermaid-config.json -p docs/entregas/puppeteer-config.json
+```
+
+Si el archivo `.mmd` cambia, vuelve a exportar el PNG en el mismo commit para que ambos coincidan.
 
 ## Cómo compilar
 
@@ -58,7 +67,7 @@ necesita conexión a internet.
   `grep -rn TODO secciones/`); las explicaciones largas van dentro de `<div class="pendiente"> ... </div>`
   (con líneas en blanco antes y después del contenido), que se ve como un recuadro naranja en el PDF.
   **Todo TODO debe desaparecer antes de la entrega final.** Las secciones que no existían en el Word
-  original (arquitectura, experimento base, repositorio, referencias y el texto del canvas) están en TODO.
+  original (experimento base, repositorio, referencias y el texto del canvas) están en TODO.
 - **Diagramas.** Bloques ```` ```mermaid ```` se renderizan en el HTML/PDF y también en GitHub. Cualquier
   archivo de texto puede incluirse con `{!ruta!}`, por ejemplo un `.mmd` dentro de un bloque mermaid.
 - **Citas.** Formato APA 7 en el texto (Autor, año) y lista completa en `10-referencias.md`.
@@ -67,7 +76,7 @@ necesita conexión a internet.
 
 - [ ] No queda ningún `TODO` ni recuadro `pendiente` en el PDF.
 - [ ] Las cuatro capturas de MLflow y la captura del repositorio están en `figuras/` y descomentadas.
-- [ ] `references/ml_canvas.png` está actualizado y legible, y el diagrama de arquitectura está en `references/`.
+- [ ] `references/ml_canvas.png` está actualizado y legible, y `references/arquitectura.png` y `references/trazabilidad.png` corresponden a sus `.mmd`.
 - [ ] La definición de P2 (clases, granularidad y horizonte) es la misma en todas las secciones y en `config.py`.
 - [ ] La sección de experimento base tiene los resultados reales.
 - [ ] El PDF generado se llama `TC5061_Propuesta_Proyecto_Equipo10.pdf`.

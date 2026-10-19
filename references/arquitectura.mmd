@@ -1,0 +1,43 @@
+%% Arquitectura del sistema · Proyecto MiBici · TC5061 Equipo 10
+%% Fuente de la Figura 2 de la Entrega 01. Se exporta a arquitectura.png con mermaid-cli (ver docs/entregas/entrega01/README.md).
+%% Colores: azul = versionado en Git · naranja = almacenamiento local fuera de Git · verde punteado = servidor en Azure planeado.
+flowchart TB
+
+  CSV["<b>1 · Fuente de datos</b><br/>24 CSV mensuales de viajes<br/>enlaces descubiertos en la<br/>página datos-abiertos de MiBici"]
+  NOM["<b>1 · Fuente de datos</b><br/>Catálogo de estaciones<br/>nomenclatura_2026_09.csv"]
+  CFG["<b>2 · Configuración (Git)</b><br/>mibici/config.py<br/>DATA_VERSION · fechas de corte<br/>semilla · parámetros de P2"]
+  MAN["<b>2 · Versión de datos (Git)</b><br/>mibici/datapackage.json (Frictionless)<br/>URL · bytes · SHA-256 de cada archivo<br/>(la ingesta verifica contra él)"]
+
+  INGEST["<b>3 · Ingesta · make data</b><br/>mibici/dataset.py<br/>descarga y verifica el SHA-256 de cada archivo<br/>normaliza codificación, fechas y columnas<br/>quita duplicados y datos personales · cruza con el catálogo"]
+
+  RAW[("<b>4 · Almacenamiento local</b><br/>data/raw<br/>CSV originales, tal como se descargan")]
+  INTERIM[("<b>4 · Almacenamiento local</b><br/>data/interim · Parquet limpio<br/>viajes.parquet por mes · estaciones.parquet")]
+
+  FEAT["<b>5 · Procesamiento · make features</b><br/>mibici/features.py<br/>funciones reutilizables y documentadas<br/>rezagos y promedios en ventanas cerradas"]
+  PROC[("<b>4 · Almacenamiento local</b><br/>data/processed<br/>tablas P1 · P2 · P3 + recibo")]
+
+  TRAIN["<b>6 · Entrenamiento · make train</b><br/>mibici/modeling/train.py<br/>Pipeline de scikit-learn<br/>partición cronológica · baseline y candidatos"]
+  MODELS[("<b>4 · Almacenamiento local</b><br/>models/")]
+
+  CLIENT["<b>7 · Registro de experimentos</b><br/>cliente MLflow en train.py · experimento mibici-equipo10<br/>params · métricas · etiquetas · artefactos<br/>backend elegido con MLFLOW_TRACKING_URI (.env)"]
+  LOCAL[("<b>7 · Backend local</b><br/>mlruns/ + mlflow ui")]
+  AZURE[("<b>7 · Backend en Azure (planeado)</b><br/>servidor MLflow en Container Apps<br/>PostgreSQL + Blob Storage")]
+
+  CSV --> INGEST
+  NOM --> INGEST
+  CFG --> INGEST
+  MAN -.-> INGEST
+  INGEST --> RAW
+  INGEST --> INTERIM
+  INTERIM --> FEAT --> PROC --> TRAIN
+  TRAIN --> MODELS
+  TRAIN --> CLIENT
+  CLIENT --> LOCAL
+  CLIENT -.-> AZURE
+
+  classDef git fill:#e8f1fb,stroke:#2b6cb0,stroke-width:1.5px,color:#1a365d
+  classDef local fill:#fff7e6,stroke:#b7791f,stroke-width:1.5px,color:#5f370e
+  classDef cloud fill:#e6fffa,stroke:#2c7a7b,stroke-width:1.5px,color:#234e52,stroke-dasharray:6 4
+  class CFG,MAN git
+  class RAW,INTERIM,PROC,MODELS,LOCAL local
+  class AZURE cloud

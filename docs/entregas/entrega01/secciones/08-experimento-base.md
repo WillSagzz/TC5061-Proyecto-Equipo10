@@ -23,11 +23,11 @@ TODO
 TODO: guardar las capturas en `figuras/` y descomentar las figuras siguientes.
 
 <!--
-![Figura 2. Lista de runs del experimento.](../figuras/mlflow_01_lista_runs.png)
+![Figura 4. Lista de runs del experimento.](../figuras/mlflow_01_lista_runs.png)
 
-![Figura 3. Detalle de un run con sus parámetros, métricas y etiquetas.](../figuras/mlflow_02_detalle_run.png)
+![Figura 5. Detalle de un run con sus parámetros, métricas y etiquetas.](../figuras/mlflow_02_detalle_run.png)
 
-![Figura 4. Artefacto registrado en el run.](../figuras/mlflow_03_artefacto.png)
+![Figura 6. Artefacto registrado en el run.](../figuras/mlflow_03_artefacto.png)
 
-![Figura 5. Comparación de dos o más runs.](../figuras/mlflow_04_comparacion.png)
+![Figura 7. Comparación de dos o más runs.](../figuras/mlflow_04_comparacion.png)
 -->
