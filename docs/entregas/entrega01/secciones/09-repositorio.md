@@ -17,7 +17,7 @@ La Tabla 15 recorre las prácticas obligatorias de la actividad e indica cómo l
 
 | Ámbito | Práctica | Cómo la aplica el equipo | Dónde se verifica |
 |--------|----------|--------------------------|-------------------|
-| MLflow Tracking | Un experimento por proyecto y *runs* con nombre descriptivo | Experimento único `mibici-equipo10`; `train.py` asigna el nombre `pregunta-modelo-etapa` a cada *run* (Tabla 12) | Interfaz de MLflow |
+| MLflow Tracking | Un experimento por proyecto y *runs* con nombre descriptivo | Experimento único `mibici-equipo10`; `train.py` asigna el nombre `P{n}-{etapa}-{modelo}` a cada *run* (Tabla 12) | Interfaz de MLflow |
 | MLflow Tracking | Registrar todo lo necesario para reproducir el *run* | Parámetros `version_datos`, fechas del periodo y de corte, `semilla`, modelo e hiperparámetros, tomados de `config.py` (Tabla 13) | Parámetros del *run* |
 | MLflow Tracking | Ligar cada *run* con el código y la pregunta | Etiquetas `git_commit`, `pregunta`, `equipo` y `tipo_modelo` escritas por `train.py` | Etiquetas del *run* |
 | MLflow Tracking | Nombrar las métricas con el conjunto en que se calculan | `test_mae`, `test_recall_vaciarse`, `train_silhouette`; nunca `mae` a secas | Métricas del *run* |
