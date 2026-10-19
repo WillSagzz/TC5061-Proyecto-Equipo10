@@ -286,7 +286,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 ├── models                <- Modelos serializados; excluidos de Git
 │
-├── notebooks             <- Solo exploración: `1.0-gsg-descarga-dataset.ipynb`
+├── notebooks             <- Solo exploración: `1.0-gsg-descarga-dataset.ipynb` y `2.0-gsg-exploracion-variables.ipynb`
 │
 ├── references            <- ML Canvas (html, pdf y png) y diagramas de arquitectura y trazabilidad (mmd y png)
 │
