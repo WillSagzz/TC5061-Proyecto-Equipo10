@@ -1,0 +1,41 @@
+{
+  "version": "1c3d603c990c",
+  "timestamp": "19/10/2026, 02:04:03 UTC",
+  "date_range": {
+    "start_date": "2024-09-01",
+    "end_date": "2026-08-01"
+  },
+  "record_count_months": 8702429,
+  "record_count_nom": 484,
+  "raw_files_sha256": {
+    "datos_abiertos_2024_09.csv": "d4f7653879861abb67ffda890dd79d0cc8b71edbb043162f19bb0125eaf60fd3",
+    "datos_abiertos_2024_10.csv": "9146623af19ea413a817a5077048b605ac5f4cd1bbe65f0d161ae39d2a9258c7",
+    "datos_abiertos_2024_11.csv": "85607feef22f75f1a1893ec5dbd3f8cfc1d01a2ef1c206418629ef672b2582ac",
+    "datos_abiertos_2024_12.csv": "4541d595fb6c539007b9309d128036356c128f2f523fe8b009050e3bf633c7d0",
+    "datos_abiertos_2025_01.csv": "90ee75701a69374926af0400d204f3280baed0e3c1a1f97d9e6c0b283757125a",
+    "datos_abiertos_2025_02.csv": "f52f13f59eb2f1517e05c72f0a3d3d70c5b0fa6b86626c7325e8ca3b15ff74f8",
+    "datos_abiertos_2025_03.csv": "e5aa1b5d197f294022d3f0ff1b55bf553fcbdb697b50d43deaddf8dca36fed64",
+    "datos_abiertos_2025_04.csv": "630e637d6611aadc67aad321edcd541361220473bddf8e34ecba46c0e29d7341",
+    "datos_abiertos_2025_05.csv": "e0a744412a1e840c1d24c24269565a123b35739c0bac494b9c0f53ba0a2c43c2",
+    "datos_abiertos_2025_06.csv": "063e3523db00c90899f08fb134c4c382667eb0e4d8b6358890d426409c6f4c9e",
+    "datos_abiertos_2025_07.csv": "a71a9e2a629ff91b021f57e302958e64fa545678d6373aaf0fed62dfc7bebd29",
+    "datos_abiertos_2025_08.csv": "382e62f3eb878e13faf4c93d031c8efcf765c392b3402d27b264613f9ff4a56d",
+    "datos_abiertos_2025_09.csv": "218bed1587a70ec5fc5e8589a04783532301f19c55acd3633fa219c96860e720",
+    "datos_abiertos_2025_10.csv": "505d9b8b59f65fa223f7889189b74b9fe167c9dda11c7e7053536a360c611370",
+    "datos_abiertos_2025_11.csv": "f5c4f1b0c0842339dfdfaac756607314bdf5b64d17cde58d754f5a5a2e1a5fbe",
+    "datos_abiertos_2025_12.csv": "b9fbb7386666ac3d452e3d3ef40ab443c39eef349cd9c97207230371e1d2d001",
+    "datos_abiertos_2026_01.csv": "c40d7a43eb1c0b1523d6267bcdfac1daad04179ef1f0a7cf93f09b2df82285c2",
+    "datos_abiertos_2026_02.csv": "2d78fa9686477bdedbf333423e6aadc63b265aaef038eb0b09701746a155ae1f",
+    "datos_abiertos_2026_03.csv": "97c273aa7465c99d509dfc58436122a979ad51af00bd527cef6144210375d16e",
+    "datos_abiertos_2026_04.csv": "9165342d0169f2c0ba4fb2c944003147c8a95d77f9058361b451cadf141b2483",
+    "datos_abiertos_2026_05.csv": "d0ac16ae3a75b8ac40565176e2e607c99c756a385860caa7e2ffb351082c9d45",
+    "datos_abiertos_2026_06.csv": "a4d195786a3599b155829288a0432cd9e76c6780dc693c0e9579d11e11c49a27",
+    "datos_abiertos_2026_07.csv": "3f9db9fed985977b175001a984302eae7c61326a75ed93afae9c8fc17bbdb922",
+    "datos_abiertos_2026_08.csv": "e34f39b9ad204ae0b66f3538894a5f86ed03f46d98701169d3e4d95952d5f671",
+    "nomenclatura_2026_09.csv": "206e45fe633922b634d858142fa21e6fd9f4c421b6435c02980ef290cc2df90d"
+  },
+  "processed_files_sha256": {
+    "meses.parquet": "832bf69f2906ab2d92064e1a5c69e7d4f771014e6c4a449335cf47e7c298d6df",
+    "nomenclatura.parquet": "49ec0d0c30ce6a989d30f845abafa3b978b7c2960434d0e2ab023e5cc4e2d21e"
+  }
+}
