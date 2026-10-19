@@ -23,3 +23,8 @@ loguru==0.7.3
 tqdm==4.67.1
 typer==0.19.2
 ruff==0.16.8
+
+# Compilación de las entregas (docs/entregas/build.py) y exportación del ML Canvas a PNG
+markdown-it-py==4.2.0
+PyYAML==6.0.3
+PyMuPDF==1.28.2
