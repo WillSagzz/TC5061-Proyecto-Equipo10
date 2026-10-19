@@ -5,6 +5,7 @@
 # MLflow: salida de los experimentos, no se versiona
 mlruns/
 mlartifacts/
+mlflow.db
 
 # Modelos serializados: se regeneran con el código de entrenamiento
 *.pkl
