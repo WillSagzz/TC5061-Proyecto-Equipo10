@@ -8,22 +8,21 @@ La estructura se generó con la plantilla Cookiecutter Data Science (DrivenData,
 
 ```text
 TC5061-Proyecto-Equipo10/
-├── .gitignore            <- Ampliado: datos, mlruns/, mlartifacts/, modelos serializados y .env
-├── Makefile              <- make data, make features, make train, make lint, make format, make entrega01
-├── README.md             <- Propósito, preguntas, datos, instalación, comandos, flujo de Git e integrantes
+├── .gitignore            <- Excluye datos, mlruns/, modelos serializados y .env
+├── Makefile              <- make data, features, train, lint, format, entrega01
+├── README.md             <- Propósito, datos, instalación, comandos, flujo Git
 ├── pyproject.toml        <- Metadatos del paquete mibici y configuración de Ruff
 ├── requirements.txt      <- Dependencias con versión fija
-├── data/                 <- Excluida de Git; la reconstruye make data (raw, interim, processed, external)
-├── docs/
-│   └── entregas/entrega01/   <- Fuente en Markdown de este PDF y su compilador (build.py)
+├── data/                 <- Excluida de Git; la reconstruye make data
+├── docs/entregas/        <- Fuente en Markdown de este PDF y su compilador
 ├── models/               <- Modelos serializados; excluidos de Git
-├── notebooks/            <- Solo exploración; convención 1.0-iniciales-descripcion.ipynb
-├── references/           <- ml_canvas.png, ml_canvas_mibici.pdf, arquitectura.mmd/.png, trazabilidad.mmd/.png
+├── notebooks/            <- Solo exploración: 1.0-gsg-descarga-dataset.ipynb
+├── references/           <- ML Canvas y diagramas (html, mmd, pdf, png)
 ├── reports/figures/      <- Figuras generadas por el código
 └── mibici/               <- Módulo del proyecto
-    ├── config.py         <- Rutas, fechas, semilla y parámetros: única fuente de configuración
-    ├── dataset.py        <- Ingesta reproducible: descarga, normaliza, limpia, escribe Parquet y versiona
-    ├── features.py       <- Funciones reutilizables de feature engineering con docstring
+    ├── config.py         <- Rutas, fechas, semilla y parámetros
+    ├── dataset.py        <- Ingesta reproducible y versionado de datos
+    ├── features.py       <- Funciones de feature engineering con docstring
     ├── plots.py          <- Figuras
     └── modeling/
         ├── train.py      <- Entrenamiento y registro de runs en MLflow
