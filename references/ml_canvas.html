@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ML Canvas · Proyecto MiBici · TC5061 Equipo 10</title>
+<!--
+Fuente del ML Canvas (Figura 1 de la Entrega 01). Se exporta a ml_canvas_mibici.pdf y ml_canvas.png con
+Microsoft Edge en modo headless (ver docs/entregas/entrega01/README.md). Si cambia el contenido, vuelve a
+exportar ambos archivos en el mismo commit.
+-->
+<style>
+  @page { size: 11in 8.5in; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #f4f4f1; }
+  body { width: 11in; height: 8.5in; font-family: "Segoe UI", "IBM Plex Sans", Arial, sans-serif; color: #222; }
+  .canvas { width: 11in; height: 8.5in; padding: 0.22in 0.28in 0.24in; display: flex; flex-direction: column; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.12in; }
+  header h1 { margin: 0; font-size: 19pt; font-weight: 800; letter-spacing: 0.02em; }
+  header .meta { font-size: 7pt; color: #555; }
+  header .meta span { display: inline-block; margin-left: 0.5em; padding: 2px 6px; background: #fff; color: #222; border: 1px solid #ddd; }
+  .grid {
+    flex: 1; display: grid; border: 2px solid #111; background: #111; gap: 2px;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.62fr);
+    grid-template-areas:
+      "pred dec val col src"
+      "imp mak val bui fea"
+      "imp mon mon mon fea";
+  }
+  .block { background: #fff; padding: 7px 9px 6px; position: relative; overflow: hidden; min-height: 0; }
+  .block h2 { margin: 0 0 5px; font-size: 8.6pt; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding-right: 30px; }
+  .block .icon { position: absolute; top: 6px; right: 8px; width: 24px; height: 24px; border-radius: 50%; background: #888; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .block p { margin: 0 0 5px; font-size: 6.9pt; line-height: 1.3; color: #444; }
+  .block p b { color: #333; font-weight: 600; }
+  .pred { grid-area: pred; } .dec { grid-area: dec; } .val { grid-area: val; } .col { grid-area: col; } .src { grid-area: src; }
+  .imp { grid-area: imp; } .mak { grid-area: mak; } .bui { grid-area: bui; } .fea { grid-area: fea; }
+  .mon { grid-area: mon; }
+  .mon .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <header>
+    <h1>MACHINE LEARNING CANVAS</h1>
+    <div class="meta">Designed for: <span>Sistema MiBici</span> Designed by: <span>Equipo 10 - TC5061</span> Date: <span>18/10/2026</span> Iteration: <span>1.1</span></div>
+  </header>
+  <div class="grid">
+
+    <section class="block pred">
+      <h2>Prediction task</h2><div class="icon">?</div>
+      <p><b>Tarea:</b> regresión (P1), clasificación multiclase con tres clases (P2) y clustering (P3).</p>
+      <p><b>Entidad:</b> cada estación en cada hora (P1), cada estación en cada intervalo de 3 horas (P2) y cada estación consolidada en todo el periodo (P3).</p>
+      <p><b>Resultado:</b> total de viajes iniciados en la hora (P1); clase <i>riesgo de vaciarse</i>, <i>riesgo de llenarse</i> o <i>sin riesgo</i>, según el flujo neto de llegadas menos salidas alcance −40 %, +40 % o quede entre ambos umbrales de la capacidad de la estación (P2); grupo funcional de uso (P3).</p>
+      <p><b>Observación:</b> al cierre de cada día se predicen las 24 horas del día siguiente (P1); al cierre de cada intervalo se predice el siguiente (P2); análisis histórico sin etiqueta (P3).</p>
+    </section>
+
+    <section class="block dec">
+      <h2>Decisions</h2><div class="icon">⑂</div>
+      <p><b>Acciones:</b> en P1, dimensionar la flota activa del día siguiente y agendar el mantenimiento en horas de baja demanda. En P2, priorizar qué estaciones abastecer o vaciar en el siguiente intervalo de 3 horas y trazar la ruta de las camionetas de rebalanceo. En P3, elegir zonas para estaciones nuevas y estaciones que requieren más anclajes.</p>
+      <p><b>Parámetros:</b> capacidad de anclajes de cada estación, umbral del 40 % de la capacidad y longitud del intervalo (3 h) de P2, probabilidad mínima para despachar una camioneta y número de grupos en P3. Todos viven en config.py.</p>
+    </section>
+
+    <section class="block val">
+      <h2>Value proposition</h2><div class="icon">★</div>
+      <p><b>Beneficiarios:</b> el operador del sistema, que planea la flota activa con P1; el equipo de rebalanceo, que evita estaciones vacías o llenas con P2; y el área de planeación urbana, que expande la red con P3. El beneficiario final es el ciclista, que encuentra bicicletas para salir y anclajes para llegar.</p>
+      <p><b>Integración e interfaz:</b> predicciones por lotes desde la terminal con el código del repositorio (make data, make train); resultados, métricas y mapas consultados en la interfaz web de MLflow Tracking, en modo local en esta entrega.</p>
+    </section>
+
+    <section class="block col">
+      <h2>Data collection</h2><div class="icon">⇣</div>
+      <p><b>Obtención inicial:</b> descarga automática desde la terminal con dataset.py, sin pasos manuales: descubre los enlaces en el portal, descarga los archivos del periodo, normaliza columnas, codificación y fechas, elimina duplicados y datos personales y guarda Parquet.</p>
+      <p><b>Actualización y costos:</b> MiBici publica un archivo nuevo cada mes; el rango de fechas se controla en config.py y la versión de los datos queda en un manifiesto con el número de registros y el hash de cada archivo. El costo es solo el tiempo de descarga.</p>
+    </section>
+
+    <section class="block src">
+      <h2>Data sources</h2><div class="icon">≡</div>
+      <p><b>Fuente:</b> portal de datos abiertos de MiBici (administrado por la AMIM): un CSV por mes con los viajes y un archivo de nomenclatura con identificador, nombre, coordenadas y capacidad de cada estación.</p>
+      <p><b>Periodo:</b> 24 meses, de septiembre de 2024 a agosto de 2026; 8,943,941 viajes y 484 estaciones en el catálogo.</p>
+    </section>
+
+    <section class="block imp">
+      <h2>Impact simulation</h2><div class="icon">✓</div>
+      <p><b>Costos y beneficios:</b> acertar en P1 y P2 optimiza los recorridos de las camionetas y asegura que los viajes puedan iniciarse y terminarse; no detectar una estación que se vacía o se llena afecta directamente al usuario, mientras que una falsa alarma solo cuesta un recorrido innecesario. En P2 se privilegia la sensibilidad sobre la precisión.</p>
+      <p><b>Datos de simulación:</b> partición estrictamente cronológica (entrenamiento hasta febrero de 2026, validación de marzo a mayo y prueba de junio a agosto de 2026); los modelos se evalúan sobre los meses más recientes, fuera de muestra, sin fuga de información.</p>
+      <p><b>Criterio de despliegue:</b> un candidato reemplaza al modelo base solo si lo supera en MLflow de forma reproducible, con la misma semilla, las mismas fechas de corte y la misma versión de datos.</p>
+    </section>
+
+    <section class="block mak">
+      <h2>Making predictions</h2><div class="icon">⇄</div>
+      <p><b>Modalidad y frecuencia:</b> por lotes programados; una vez al día para P1, cada 3 horas para P2 y de forma mensual o trimestral para P3.</p>
+      <p><b>Tiempo disponible:</b> menos de 5 minutos para construir las variables con features.py y generar las predicciones, lo que deja al equipo de rebalanceo casi todo el intervalo para operar en calle.</p>
+      <p><b>Recursos:</b> una computadora local con Python, pandas y scikit-learn leyendo desde Parquet; sin cómputo distribuido ni servicio en línea.</p>
+    </section>
+
+    <section class="block bui">
+      <h2>Building models</h2><div class="icon">⚙</div>
+      <p><b>Modelos necesarios:</b> tres flujos independientes (regresión, clasificación y clustering), cada uno con un modelo base y al menos un candidato registrados en el experimento mibici-equipo10 de MLflow.</p>
+      <p><b>Actualización:</b> reentrenamiento mensual, al publicarse un archivo nuevo de viajes, o ante un cambio de estación del año.</p>
+      <p><b>Tiempo y recursos:</b> procesamiento fuera de línea, de minutos a unas pocas horas en una computadora local, leyendo millones de registros desde Parquet.</p>
+    </section>
+
+    <section class="block fea">
+      <h2>Features</h2><div class="icon">▥</div>
+      <p><b>Al momento de predecir:</b> en P1 y P2, hora o intervalo del día, día de la semana, indicador de fin de semana, capacidad de la estación y comportamiento pasado de la estación (salidas, llegadas y desbalance de hace 1 hora, 24 horas y 7 días, más promedios móviles recientes). En P3, porcentaje de movimientos por periodo del día, porcentaje en días laborales, uso diario por anclaje y balances de la mañana y de la tarde.</p>
+      <p><b>Transformaciones:</b> limpieza, unión con el catálogo de estaciones y agregación por estación y ventana de tiempo usando únicamente datos anteriores al momento de la predicción.</p>
+    </section>
+
+    <section class="block mon">
+      <h2>Monitoring</h2><div class="icon">∿</div>
+      <div class="cols">
+        <p><b>Métricas técnicas (MLflow):</b> MAE y RMSE en P1; sensibilidad y precisión de las clases vaciarse y llenarse, F1 macro y matriz de confusión en P2; coeficiente de silueta e índice de Davies-Bouldin en P3, siempre con el conjunto como prefijo (test_mae, test_recall_vaciarse, train_silhouette).</p>
+        <p><b>Indicadores de negocio:</b> porcentaje de intervalos con estaciones vacías o llenas y kilómetros recorridos por las camionetas de rebalanceo por bicicleta movida.</p>
+        <p><b>Revisión:</b> semanal para las predicciones operativas (P1 y P2) y mensual para la agrupación de estaciones (P3). Un deterioro sostenido de las métricas dispara el reentrenamiento.</p>
+      </div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>
