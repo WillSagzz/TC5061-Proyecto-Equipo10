@@ -36,13 +36,13 @@ El flujo completo (ciclo de trabajo, tipos de rama y de *commit*, plantilla y li
 
 ## Integrantes y roles
 
-Todos los integrantes participan en la propuesta, revisan los *Pull Requests* de los demás y contribuyen código y documentación; el rol indica el frente del que cada uno es responsable principal, como se documenta en el README.
+Todos los integrantes participan en la propuesta, revisan los *Pull Requests* de los demás y contribuyen código y documentación; el rol indica el frente del que cada uno es responsable principal.
 
 **Tabla 16.** Integrantes del equipo y roles.
 
-| Integrante | Matrícula | Usuario de GitHub | Rol | Responsabilidad |
-|------------|-----------|-------------------|-----|-----------------|
-| Mariely Toribio Rodríguez | A01797848 | `a01797848` | **Data Scientist** | Formulación de las preguntas, exploración de los datos, modelos y métricas. |
-| Guillermo Sáenz González | A00823049 | `WillSagzz` | **Data Engineer** | Ingesta y versionado de los datos; administración del repositorio. |
-| Victor Yoguel Salazar Alanis | A01797950 | `CFOP2357` | **Machine Learning Architect** | Arquitectura del sistema, flujo de trabajo, registro de experimentos y entorno reproducible. |
-| Alan Augusto Herrera Sánchez | A01338336 | `alanhsa9` | **Subject Matter Expert** | ML Canvas y validación de las decisiones desde la operación de MiBici. |
+| Integrante | Matrícula | Usuario de GitHub | Rol |
+|------------|-----------|-------------------|-----|
+| Mariely Toribio Rodríguez | A01797848 | `a01797848` | Data Scientist |
+| Guillermo Sáenz González | A00823049 | `WillSagzz` | Data Engineer |
+| Victor Yoguel Salazar Alanis | A01797950 | `CFOP2357` | Machine Learning Architect |
+| Alan Augusto Herrera Sánchez | A01338336 | `alanhsa9` | Subject Matter Expert |
