@@ -624,10 +624,10 @@ de los demás.
 
 | Integrante | Matrícula | Usuario de GitHub | Rol | Responsabilidades en el proyecto |
 |---|---|---|---|---|
-| Mariely Toribio Rodríguez | A01797848 | [a01797848](https://github.com/a01797848) | **Data Scientist** | Formula P1, P2 y P3 como problemas de ML y define las variables objetivo, la estrategia de partición, el *pipeline* y los modelos *baseline* y candidatos con sus métricas. Explora los datos en los *notebooks* y evalúa la calidad de los modelos junto con el *subject matter expert*. |
-| Guillermo Sáenz González | A00823049 | [WillSagzz](https://github.com/WillSagzz) | **Data Engineer** | Construye la ingesta reproducible en `dataset.py`: descubrimiento y descarga de los archivos, normalización de columnas, codificación y fechas, escritura en Parquet y versionado de los datos. Es dueño del repositorio y administra las reglas de `main` y los permisos. |
-| Victor Yoguel Salazar Alanis | A01797950 | [CFOP2357](https://github.com/CFOP2357) | **Machine Learning Architect** | Diseña la arquitectura del sistema y la cadena de trazabilidad; define el flujo de trabajo con Git/GitHub, las convenciones de código y la configuración centralizada; monta el registro de experimentos en MLflow (local y servidor en Azure planeado) y el entorno reproducible; compila las entregas (`docs/entregas/`) y mantiene el README. |
-| Alan Augusto Herrera Sánchez | A01338336 | [alanhsa9](https://github.com/alanhsa9) | **Subject Matter Expert** | Elabora el ML Canvas: propuesta de valor, decisiones que tomará cada usuario (operador, rebalanceo y planeación urbana) y KPIs de negocio por pregunta. Valida que la aproximación del riesgo de P2 y las métricas elegidas tengan sentido para la operación de MiBici y da retroalimentación cuando los resultados no cumplan la expectativa de negocio. |
+| Mariely Toribio Rodríguez | A01797848 | [a01797848](https://github.com/a01797848) | **Data Scientist** | Formulación de las preguntas, exploración de los datos, modelos y métricas. |
+| Guillermo Sáenz González | A00823049 | [WillSagzz](https://github.com/WillSagzz) | **Data Engineer** | Ingesta y versionado de los datos; administración del repositorio. |
+| Victor Yoguel Salazar Alanis | A01797950 | [CFOP2357](https://github.com/CFOP2357) | **Machine Learning Architect** | Arquitectura del sistema, flujo de trabajo, registro de experimentos y entorno reproducible. |
+| Alan Augusto Herrera Sánchez | A01338336 | [alanhsa9](https://github.com/alanhsa9) | **Subject Matter Expert** | ML Canvas y validación de las decisiones desde la operación de MiBici. |
 
 **Declaración de uso de IA.** El equipo usó asistentes de IA para edición de código y gestión
 del repositorio bajo un esquema *human-in-the-loop*: las decisiones fueron dirigidas, revisadas
