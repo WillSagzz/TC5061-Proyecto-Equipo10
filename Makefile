@@ -60,7 +60,7 @@ create_environment:
 ## Make dataset
 .PHONY: data
 data: requirements
-	$(PYTHON_INTERPRETER) feature_engineering/dataset.py
+	$(PYTHON_INTERPRETER) mibici/dataset.py
 
 
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/

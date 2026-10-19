@@ -4,7 +4,7 @@ from loguru import logger
 from tqdm import tqdm
 import typer
 
-from feature_engineering.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, DATA_DIR, START_DATE, END_DATE
+from mibici.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, DATA_DIR, START_DATE, END_DATE
 
 import requests
 from bs4 import BeautifulSoup
