@@ -4,7 +4,7 @@ from loguru import logger
 from tqdm import tqdm
 import typer
 
-from feature_engineering.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, DATA_DIR, START_DATE, END_DATE
+from feature_engineering.config import PROCESSED_DATA_DIR, INTERIM_DATA_DIR, RAW_DATA_DIR, DATA_DIR, START_DATE, END_DATE
 
 import requests
 from bs4 import BeautifulSoup
@@ -15,6 +15,10 @@ import datetime
 import json
 
 app = typer.Typer()
+
+# -------------------------------------------------------------------------------------------------
+# Download data
+# -------------------------------------------------------------------------------------------------
 
 # MARK: Fetch URL
 # (Website or File)
@@ -85,13 +89,19 @@ def download_files(base_url:str, path_list:list, input_path:Path):
             f.write(r.content)
     return
 
+# -------------------------------------------------------------------------------------------------
+# Process data
+# -------------------------------------------------------------------------------------------------
+
 # MARK: Read files
 def read_raw_data(input_path:Path, file_type:str='month'):
     filenames = os.listdir(input_path)
     if file_type=='month':
         filenames = [f for f in filenames if 'datos_abiertos' in f]
+        encoding = 'latin-1'
     elif file_type=='nom':
         filenames = [f for f in filenames if 'nomenclatura' in f][:1]
+        encoding = 'utf-8'
     else:
         print('File type must be "month" or "nom".')
         return pandas.DataFrame()
@@ -99,31 +109,74 @@ def read_raw_data(input_path:Path, file_type:str='month'):
     df_list = []
     for filename in filenames:
         filepath = f'{input_path}/{filename}'
-        df = pandas.read_csv(filepath, encoding='latin-1')
+        df = pandas.read_csv(filepath, encoding=encoding)
+        df = df.rename(columns={'AÃ±o_de_nacimiento':'Año_de_nacimiento'})
         df_list.append(df)
 
     if file_type=='nom': return df
-    return pandas.concat(df_list)
+    return pandas.concat(df_list, ignore_index=True)
 
 # MARK: Normalize column names
 def normalize_text(col:str):
     col_lower = col.lower()
     col_norm = unicodedata.normalize('NFKD', col_lower)
     col_ascii = col_norm.encode('ascii', 'ignore').decode('ascii')
+    col_ascii = 'ano_de_nacimiento' if col_ascii=='aao_de_nacimiento' else col_ascii
     return col_ascii
 
-def norm_cols(df):
+def norm_cols(df:pandas.DataFrame):
     cols = list(df.columns)
     cols_norm = [normalize_text(col) for col in cols]
-    df.cols = cols_norm
-    return df
+    logger.debug(f'Normalized column names: {cols_norm}')
+
+    rename_dict = dict(zip(cols, cols_norm))
+    logger.debug(f'Rename dict: {rename_dict}')
+    df_renamed = df.rename(columns=rename_dict)
+    return df_renamed
+
+def set_col_types(df:pandas.DataFrame, filetype:str):
+    logger.info(f'Setting column types for {filetype} data...')
+    datatypes_dicts = {
+        'months': {
+            'viaje_id':'int64',
+            'usuario_id':'int64',
+            'genero':'str',
+            'ano_de_nacimiento':'float16',
+            'inicio_del_viaje':'str',
+            'fin_del_viaje':'str',
+            'origen_id':'int64',
+            'destino_id':'int64'
+        },
+        'nom': {
+            'id':'int64',
+            'name':'str',
+            'latitude':'float64',
+            'longitude':'float64',
+            'dpcapacity':'int64',
+        }
+    }
+
+    if not filetype in ['months', 'nom']:
+        logger.error(f'The only valid filetype values are "months" and "nom". But the value received was: {filetype}')
+
+    df_new = df.copy()
+    datatypes_dict = datatypes_dicts[filetype]
+    for k in datatypes_dict:
+        datatype = datatypes_dict[k]
+        df_new[k] = df_new[k].astype( datatype )
+
+    return df_new
+
+# -------------------------------------------------------------------------------------------------
+# Run
+# -------------------------------------------------------------------------------------------------
 
 # MARK: Main fn
 @app.command()
 def main(
     data_path: Path = DATA_DIR,
     input_path: Path = RAW_DATA_DIR,
-    output_path: Path = PROCESSED_DATA_DIR,
+    output_path: Path = INTERIM_DATA_DIR,
     start_date: str = START_DATE,
     end_date: str = END_DATE
 ):
@@ -157,13 +210,17 @@ def main(
     df_months = norm_cols(df_months)
     df_nom = norm_cols(df_nom)
 
+    # Set column types
+    df_months = set_col_types(df_months, 'months')
+    df_nom = set_col_types(df_nom, 'nom')
+
     # Write to parquet
     logger.info("Saving processed dataset...")
     filepath_months = f'{output_path}/meses.parquet'
     df_months.to_parquet(filepath_months)
 
     filepath_nom = f'{output_path}/nomenclatura.parquet'
-    df_months.to_parquet(filepath_nom)
+    df_nom.to_parquet(filepath_nom)
 
     logger.success("Processing dataset complete.")
 
