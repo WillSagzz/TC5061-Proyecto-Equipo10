@@ -21,11 +21,11 @@ La Tabla 15 recorre las prácticas obligatorias de la actividad e indica cómo l
 | MLflow Tracking | Registrar todo lo necesario para reproducir el *run* | Parámetros `version_datos`, fechas del periodo y de corte, `semilla`, modelo e hiperparámetros, tomados de `config.py` (Tabla 13) | Parámetros del *run* |
 | MLflow Tracking | Ligar cada *run* con el código y la pregunta | Etiquetas `git_commit`, `pregunta`, `equipo` y `tipo_modelo` escritas por `train.py` | Etiquetas del *run* |
 | MLflow Tracking | Nombrar las métricas con el conjunto en que se calculan | `test_mae`, `test_recall_vaciarse`, `train_silhouette`; nunca `mae` a secas | Métricas del *run* |
-| MLflow Tracking | No registrar credenciales ni datos personales | `dataset.py` elimina usuario, género y año de nacimiento antes de escribir Parquet; la URI del servidor vive en `.env`, excluido de Git | Interfaz de MLflow y código |
+| MLflow Tracking | No registrar credenciales ni datos personales | `dataset.py` conserva solo las columnas del contrato de datos, sin usuario, género ni año de nacimiento; la URI del servidor vive en `.env`, excluido de Git | Interfaz de MLflow y código |
 | Estructura y código | Notebooks solo para exploración, con la convención de la plantilla | La lógica final vive en `mibici/`; el notebook de exploración de la descarga se llama `1.0-gsg-descarga-dataset.ipynb` y la ingesta definitiva está en `dataset.py` | Carpeta `notebooks/` |
 | Estructura y código | Configuración en un solo lugar | Rutas (`pathlib`), fechas del periodo y de corte, semilla, umbral e intervalo de P2 y nombre del experimento, todos en `config.py` | `mibici/config.py` |
 | Estructura y código | Dependencias con versión fija y entorno reproducible | `requirements.txt` con versiones fijadas; Python 3.10; instalación documentada en el README desde un clon limpio | `requirements.txt` y README |
-| Datos y Git | Ningún dato, modelo, carpeta de MLflow ni credencial en el historial | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/`, `*.pkl`, `*.joblib` y `.env`; la revisión de cada PR lo comprueba | `.gitignore` e historial |
+| Datos y Git | Ningún dato, modelo, carpeta de MLflow ni credencial en el historial | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/`, `mlflow.db`, `*.pkl`, `*.joblib` y `.env`; la revisión de cada PR lo comprueba | `.gitignore` e historial |
 | Datos y Git | Todo cambio entra a la rama principal por *Pull Request* revisado | Regla de protección de `main` que exige PR con una aprobación; todos los PR mezclados han sido revisados por otro integrante | Pestaña de *Pull Requests* |
 
 ## Flujo de trabajo con Git/GitHub

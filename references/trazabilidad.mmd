@@ -3,20 +3,20 @@
 %% Colores: azul = en Git · naranja = regenerado en cada máquina · verde = registro en MLflow.
 flowchart TB
 
-  MAN["<b>Descriptor de datos (Git)</b><br/>mibici/datapackage.json · version 2026-10"]
+  MAN["<b>Manifiesto de datos (Git)</b><br/>data_manifest.json · version 1c3d603c990c<br/>SHA-256 de cada CSV y Parquet"]
   COMMIT["<b>Commit del código (Git)</b><br/>mibici/ · config.py"]
   REQ["<b>Entorno (Git)</b><br/>requirements.txt con versiones fijas"]
 
-  DATA[("<b>Datos regenerados</b><br/>data/processed · tablas P1 · P2 · P3")]
-  RECEIPT["<b>Recibo de construcción</b><br/>data_version · commit · filas · esquema"]
+  DATA[("<b>Datos regenerados</b><br/>data/processed · meses.parquet · nomenclatura.parquet")]
+  CHECK["<b>Contrato de datos</b><br/>load_data valida columnas y tipos<br/>get_data_version lee el manifiesto"]
 
-  RUN["<b>Run de MLflow</b><br/>params: version_datos · fechas del periodo y de corte · semilla · modelo · hiperparámetros<br/>tags: equipo · pregunta · git_commit · tipo_modelo<br/>métricas: test_mae · test_rmse · test_recall_vaciarse · test_f1_macro · train_silhouette · …<br/>artefactos: figuras · modelo · descriptor<br/>dataset (log_input): nombre · digest · fuente"]
+  RUN["<b>Run de MLflow</b><br/>params: version_datos · fechas de la partición · semilla · modelo · hiperparámetros<br/>tags: equipo · pregunta · git_commit · tipo_modelo<br/>métricas: test_mae · test_rmse · test_recall_vaciarse · test_f1_macro · train_silhouette · …<br/>artefactos: figuras · modelo · tablas de grupos"]
 
-  MAN -- "make data verifica los hashes" --> DATA
-  COMMIT -- "make data · make features" --> DATA
+  COMMIT -- "make data escribe los Parquet y el manifiesto" --> DATA
+  DATA -. "hashes" .-> MAN
   REQ ~~~ DATA
-  DATA --> RECEIPT
-  RECEIPT -- "train.py comprueba antes de entrenar" --> RUN
+  DATA --> CHECK
+  CHECK -- "train.py entrena y registra" --> RUN
   MAN -. "param version_datos" .-> RUN
   COMMIT -. "tag git_commit" .-> RUN
   REQ -. "mismo entorno" .-> RUN
@@ -25,5 +25,5 @@ flowchart TB
   classDef local fill:#fff7e6,stroke:#b7791f,stroke-width:1.5px,color:#5f370e
   classDef run fill:#f0fff4,stroke:#2f855a,stroke-width:1.5px,color:#22543d
   class MAN,COMMIT,REQ git
-  class DATA,RECEIPT local
+  class DATA,CHECK local
   class RUN run

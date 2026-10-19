@@ -24,7 +24,7 @@ Se descarta el error porcentual (MAPE) porque la mayoría de las combinaciones d
 
 ### Modelo baseline
 
-**`DummyClassifier` por estación, intervalo del día y tipo de día:** análogo al *baseline* de P1, se entrena un `DummyClassifier` con `strategy="most_frequent"` para cada combinación de estación, intervalo de 3 horas y tipo de día (laboral o fin de semana). Cada uno predice la clase más frecuente que tuvo su grupo en el conjunto de entrenamiento; por ejemplo, si la estación 25 de 9:00 a 12:00 en días laborales terminó la mayoría de las veces en *riesgo de vaciarse*, predice esa clase. Representa lo que el equipo de rebalanceo puede hacer hoy con el patrón habitual de cada estación, sin usar el comportamiento reciente. Es un *baseline* más exigente que predecir siempre la clase mayoritaria (*sin riesgo*), que tendría exactitud alta pero sensibilidad cero en las clases de riesgo; aun así, hace visible el desbalance de clases, porque en los grupos donde el riesgo no es mayoritario predice *sin riesgo*.
+**`DummyClassifier` por estación, intervalo del día y tipo de día:** análogo al *baseline* de P1, se entrena un `DummyClassifier` con `strategy="prior"` para cada combinación de estación, intervalo de 3 horas y tipo de día (laboral o fin de semana). Cada uno predice la clase más frecuente que tuvo su grupo en el conjunto de entrenamiento y, como probabilidad de cada clase, la proporción con que apareció en el grupo, lo que permite calcular la precisión promedio; por ejemplo, si la estación 25 de 9:00 a 12:00 en días laborales terminó la mayoría de las veces en *riesgo de vaciarse*, predice esa clase. Representa lo que el equipo de rebalanceo puede hacer hoy con el patrón habitual de cada estación, sin usar el comportamiento reciente. Es un *baseline* más exigente que predecir siempre la clase mayoritaria (*sin riesgo*), que tendría exactitud alta pero sensibilidad cero en las clases de riesgo; aun así, hace visible el desbalance de clases, porque en los grupos donde el riesgo no es mayoritario predice *sin riesgo*.
 
 ### Modelos candidatos
 
@@ -43,11 +43,11 @@ Se descarta el error porcentual (MAPE) porque la mayoría de las combinaciones d
 
 ### Modelo baseline
 
-**`KMeans` con `k = 4`:** se estandarizan las cinco variables del perfil de cada estación (sección 4, Tabla 4) con `StandardScaler` y se agrupa con K-medias en cuatro grupos, número elegido a priori porque corresponde a las vocaciones que el área de planeación espera encontrar (residencial emisora, receptora de oficinas y escuelas, recreativa y periférica de baja rotación). La semilla fija de `config.py` hace reproducible la inicialización. Este *baseline* establece la cohesión mínima que un candidato debe mejorar y produce el primer mapa de grupos.
+**`KMeans` con `k = 4`:** se estandarizan las cinco variables del perfil de cada estación (sección 4, Tabla 4; ocho columnas, porque la proporción por periodo del día son cuatro) con `StandardScaler` y se agrupa con K-medias en cuatro grupos, número elegido a priori porque corresponde a las vocaciones que el área de planeación espera encontrar (residencial emisora, receptora de oficinas y escuelas, recreativa y periférica de baja rotación). La semilla fija de `config.py` hace reproducible la inicialización. Este *baseline* establece la cohesión mínima que un candidato debe mejorar y produce el primer mapa de grupos.
 
 ### Modelos candidatos
 
-- **`KMeans` con selección de `k`:** se evalúan valores de `k` entre 3 y 8 y se elige el que maximiza el coeficiente de silueta sin sacrificar la interpretabilidad de los grupos. Permite comprobar si cuatro vocaciones son suficientes o si la ciudad presenta perfiles adicionales.
+- **`KMeans` con selección de `k`:** el *run* base registra ya la silueta y el índice de Davies-Bouldin para cada `k` entre 2 y 8 (métricas `train_silhouette_por_k` y `train_davies_bouldin_por_k`, con `k` como paso); el candidato elige el `k` que maximiza la silueta sin sacrificar la interpretabilidad de los grupos. Permite comprobar si cuatro vocaciones son suficientes o si la ciudad presenta perfiles adicionales.
 - **`AgglomerativeClustering` (enlace de Ward):** agrupamiento jerárquico que no supone grupos esféricos de tamaño similar, como sí lo hace K-medias, y cuyo dendrograma permite al área de planeación ver cómo se van fusionando las estaciones. Se elige como alternativa estructuralmente distinta para verificar que los grupos encontrados no dependen del algoritmo.
 
 ### Métricas de evaluación

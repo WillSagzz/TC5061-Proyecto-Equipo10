@@ -84,7 +84,8 @@ necesita conexión a internet.
 ## Lista de verificación antes de entregar
 
 - [ ] No queda ningún `TODO` ni recuadro `pendiente` en el PDF.
-- [ ] `references/ml_canvas.png` está actualizado y legible, y `references/arquitectura.png` y `references/trazabilidad.png` corresponden a sus `.mmd`.
+- [ ] `references/ml_canvas.png` corresponde a `ml_canvas.html`, y `references/arquitectura.png` y `references/trazabilidad.png` corresponden a sus `.mmd`.
+- [ ] La sección 7 y la 8 describen los comandos, archivos y parámetros que existen en el código (`make data`, `make train`, `data_manifest.json`, `mlflow.db`).
 - [ ] La definición de P2 (clases, granularidad y horizonte) es la misma en todas las secciones y en `config.py`.
 - [ ] La Tabla 15 de la sección 9 incluye todos los PR mezclados hasta el momento de la entrega.
 - [ ] El PDF generado se llama `TC5061_Propuesta_Proyecto_Equipo10.pdf`.
