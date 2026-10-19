@@ -14,14 +14,14 @@ entrega01/
 │   ├── 00-portada.md
 │   ├── 01-introduccion.md        (enlace al repositorio, preguntas del proyecto)
 │   ├── 02-formulacion.md         (P1, P2, P3)
-│   ├── 03-ml-canvas.md           (imagen del canvas; contenido por bloque en TODO)
+│   ├── 03-ml-canvas.md           (imagen del canvas y tabla con el contenido por bloque)
 │   ├── 04-datos.md               (rango, fuentes, tamaño, variables, condiciones de uso, partición)
 │   ├── 05-pipeline.md
 │   ├── 06-modelos-metricas.md
 │   ├── 07-arquitectura.md        (principios, diagrama, componentes y herramientas, trazabilidad)
-│   ├── 08-experimento-base.md    (TODO: diseño, resultados, capturas de MLflow)
-│   ├── 09-repositorio.md         (TODO: estructura, buenas prácticas, flujo Git, integrantes)
-│   └── 10-referencias.md         (TODO: APA 7)
+│   ├── 08-experimento-base.md    (diseño, comando, resultados y capturas de MLflow)
+│   ├── 09-repositorio.md         (estructura, buenas prácticas, flujo Git, PRs, integrantes)
+│   └── 10-referencias.md         (APA 7)
 ├── figuras/             <- capturas e imágenes exclusivas de esta entrega (logo, capturas de MLflow)
 └── build/               <- SALIDA generada (ignorada por Git): .md compilado, .html y .pdf
 ```
@@ -37,6 +37,15 @@ npx -y -p @mermaid-js/mermaid-cli mmdc -i references/arquitectura.mmd -o referen
 ```
 
 Si el archivo `.mmd` cambia, vuelve a exportar el PNG en el mismo commit para que ambos coincidan.
+
+El ML Canvas se escribe en HTML (`references/ml_canvas.html`) y se exporta a PDF con Microsoft Edge en modo
+*headless* y a PNG con PyMuPDF (incluido en las dependencias), desde la raíz del repositorio:
+
+```bash
+"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless --disable-gpu --no-pdf-header-footer \
+    --print-to-pdf="$PWD/references/ml_canvas_mibici.pdf" "file:///$PWD/references/ml_canvas.html"
+python -c "import pymupdf; pymupdf.open('references/ml_canvas_mibici.pdf')[0].get_pixmap(dpi=300).save('references/ml_canvas.png')"
+```
 
 ## Cómo compilar
 
@@ -66,8 +75,8 @@ necesita conexión a internet.
 - **Pendientes.** Lo que falta por escribir o decidir se marca con la palabra `TODO` (buscable con
   `grep -rn TODO secciones/`); las explicaciones largas van dentro de `<div class="pendiente"> ... </div>`
   (con líneas en blanco antes y después del contenido), que se ve como un recuadro naranja en el PDF.
-  **Todo TODO debe desaparecer antes de la entrega final.** Las secciones que no existían en el Word
-  original (experimento base, repositorio, referencias y el texto del canvas) están en TODO.
+  **Todo TODO debe desaparecer antes de la entrega final.** Quedan en TODO únicamente los resultados
+  reales del experimento base y las capturas (MLflow y repositorio), que se obtienen al ejecutar `make train`.
 - **Diagramas.** Bloques ```` ```mermaid ```` se renderizan en el HTML/PDF y también en GitHub. Cualquier
   archivo de texto puede incluirse con `{!ruta!}`, por ejemplo un `.mmd` dentro de un bloque mermaid.
 - **Citas.** Formato APA 7 en el texto (Autor, año) y lista completa en `10-referencias.md`.
@@ -75,8 +84,7 @@ necesita conexión a internet.
 ## Lista de verificación antes de entregar
 
 - [ ] No queda ningún `TODO` ni recuadro `pendiente` en el PDF.
-- [ ] Las cuatro capturas de MLflow y la captura del repositorio están en `figuras/` y descomentadas.
 - [ ] `references/ml_canvas.png` está actualizado y legible, y `references/arquitectura.png` y `references/trazabilidad.png` corresponden a sus `.mmd`.
 - [ ] La definición de P2 (clases, granularidad y horizonte) es la misma en todas las secciones y en `config.py`.
-- [ ] La sección de experimento base tiene los resultados reales.
+- [ ] La Tabla 15 de la sección 9 incluye todos los PR mezclados hasta el momento de la entrega.
 - [ ] El PDF generado se llama `TC5061_Propuesta_Proyecto_Equipo10.pdf`.

@@ -8,7 +8,7 @@ Esta sección describe los componentes de la solución, cómo se conectan desde 
 
 **2. El repositorio guarda recetas y huellas, nunca resultados.** En Git viven el código, la configuración, el descriptor que describe los datos y la documentación. Los CSV, los Parquet, los modelos, las carpetas de MLflow y las credenciales se regeneran en cada máquina y están excluidos por el `.gitignore`. Esto sigue las opiniones de Cookiecutter Data Science de que los datos crudos son inmutables y de que secretos y configuración local quedan fuera del control de versiones (DrivenData, s.f.), y cumple la restricción de la actividad de que ningún dato de MiBici, modelo ni carpeta de MLflow entre al historial.
 
-**3. Todo *run* registra el commit, la versión de datos y el entorno con que se produjo.** Los *runs* no se versionan en Git: viven en MLflow y cada uno lleva como etiquetas y parámetros el SHA del commit, el nombre de la versión de datos, las fechas de corte y la semilla, de modo que cualquier integrante puede volver a ese commit, reconstruir esa versión de datos y reproducirlo. Treveil et al. (2020, cap. 4) señalan que la reproducibilidad exige versionar por separado código, datos y entorno, y Huyen (2022, cap. 6) describe el *experiment tracking* como el mecanismo que une esas piezas.
+**3. Todo *run* registra el commit, la versión de datos y el entorno con que se produjo.** Los *runs* no se versionan en Git: viven en MLflow y cada uno lleva como etiquetas y parámetros el SHA del commit, la huella de la versión de datos, las fechas de corte y la semilla, de modo que cualquier integrante puede volver a ese commit, reconstruir esa versión de datos y reproducirlo. Treveil et al. (2020, cap. 4) señalan que la reproducibilidad exige versionar por separado código, datos y entorno, y Huyen (2022, cap. 6) describe el *experiment tracking* como el mecanismo que une esas piezas.
 
 ## Diagrama de arquitectura
 
@@ -36,11 +36,11 @@ Tres propiedades de la fuente condicionan el diseño:
 
 La actividad pide un mecanismo de versionado que permita reconstruir exactamente los mismos datos en cualquier computadora y registrar la versión en MLflow. Como el repositorio no puede contener ningún byte de MiBici, lo versionable es una descripción de los datos suficiente para reconstruirlos y verificarlos. Es la opción que sugiere la actividad (manifiesto en Git con conteo y hash por archivo) y el mismo patrón con que Nix, Bazel, pip en modo de verificación de hashes y DVC fijan dependencias externas: URL y hash de contenido en el control de versiones, bytes fuera de él y fallo explícito si el origen cambió.
 
-- **El descriptor sigue el estándar Frictionless Data Package:** un único archivo `mibici/datapackage.json` con un recurso por archivo fuente (24 meses de viajes y la nomenclatura), cada uno con `path` (la URL), `bytes`, `hash` SHA-256, `encoding` y el esquema de columnas, más `version`, `created`, `sources` y `licenses` del paquete. Usar un estándar permite validar tamaños, hashes y esquema con la biblioteca `frictionless` en lugar de código propio, y el descriptor sirve además como ficha del dataset.
+- **El descriptor sigue el estándar Frictionless Data Package (Frictionless Data, s.f.):** un único archivo `mibici/datapackage.json` con un recurso por archivo fuente (24 meses de viajes y la nomenclatura), cada uno con `path` (la URL), `bytes`, `hash` SHA-256, `encoding` y el esquema de columnas, más `version`, `created`, `sources` y `licenses` del paquete. Usar un estándar permite validar tamaños, hashes y esquema con la biblioteca `frictionless` en lugar de código propio, y el descriptor sirve además como ficha del dataset.
 - **La versión es el campo `version` del descriptor y el commit que lo contiene.** `version` lleva el mes en que se congeló la instantánea (`2026-10`, que cubre de septiembre de 2024 a agosto de 2026); cualquier cambio en los archivos fuente produce un descriptor nuevo con otra `version`, que entra a `main` por *Pull Request*. El historial de versiones es el historial de Git de ese archivo, como ocurre con cualquier *lockfile*. La ventana se mantiene congelada durante el curso para que las métricas de las entregas sean comparables.
 - **Vive dentro del módulo** porque lo lee el código en tiempo de ejecución: `config.py` toma de él la versión y las fechas, `dataset.py` verifica contra él y `train.py` lo registra en cada *run*.
 
-**Tabla 7.** Comandos del versionado de datos.
+**Tabla 8.** Comandos del versionado de datos.
 
 | Comando | Qué hace |
 |---------|----------|
@@ -58,13 +58,13 @@ El descriptor describe las entradas, no las salidas: las tablas procesadas son u
 3. **Limpia.** Elimina duplicados por identificador de viaje, descarta en esta frontera las columnas de usuario, género y año de nacimiento para que ninguna tabla ni artefacto posterior contenga datos personales, y cruza con el catálogo de estaciones.
 4. **Consolida la ventana y escribe Parquet** particionado por mes. El archivo mensual es la partición de la fuente, no la unidad de análisis: 622 viajes del periodo terminan en el mes siguiente al de su archivo, los rezagos de 24 horas y 7 días cruzan los bordes de mes y 111 estaciones abrieron durante la ventana, así que los 24 meses se unen en una sola tabla antes de cualquier agregación.
 
-Herramientas: Python 3.10, Typer, requests y BeautifulSoup para descubrir y descargar, pandas y pyarrow para transformar y escribir, hashlib para los hashes y loguru para el registro de eventos. Huyen (2022, cap. 3) contrapone el CSV, orientado a filas, con Parquet, orientado a columnas y comprimido; aquí leer los 24 CSV toma 135 segundos y leer el Parquet equivalente, 1.4. La frontera de datos personales responde a las condiciones de uso de la sección 4 y a la práctica obligatoria de no registrar datos personales en MLflow.
+Herramientas: Python 3.10, Typer, requests y BeautifulSoup para descubrir y descargar, pandas y pyarrow para transformar y escribir, hashlib para los hashes y loguru para el registro de eventos. Huyen (2022, cap. 3) contrapone el CSV, orientado a filas, con Parquet, orientado a columnas y comprimido, que pandas lee y escribe de forma nativa (pandas, s.f.); aquí leer los 24 CSV toma 135 segundos y leer el Parquet equivalente, 1.4. La frontera de datos personales responde a las condiciones de uso de la sección 4 y a la práctica obligatoria de no registrar datos personales en MLflow.
 
 ### 4. Almacenamiento
 
 El almacenamiento es local, en la carpeta `data/` excluida de Git, con los niveles de la plantilla de Cookiecutter Data Science (DrivenData, s.f.). No hay almacenamiento compartido por decisión: la actividad exige que los datos puedan reconstruirse en cualquier computadora, así que el sistema de registro es el portal más el descriptor, no la copia de ningún integrante.
 
-**Tabla 8.** Niveles de almacenamiento local.
+**Tabla 9.** Niveles de almacenamiento local.
 
 | Carpeta | Contenido | Quién la escribe |
 |---------|-----------|------------------|
@@ -81,15 +81,15 @@ La regla crítica es que ninguna variable use información posterior al momento 
 
 ### 6. Entrenamiento
 
-`train.py` recibe la pregunta y el modelo (`baseline` o candidato), de modo que `make train` lo invoca una vez por combinación y cada ejecución es un *run* independiente. Lee el recibo de construcción y se niega a entrenar si la versión de datos o el esquema no coinciden con `config.py`. Construye un `Pipeline` de scikit-learn con preprocesamiento y estimador, lo ajusta con el bloque de entrenamiento, evalúa con el bloque de prueba y guarda el modelo en `models/`. scikit-learn cubre los modelos base y candidatos y las métricas de la sección 6; LightGBM o XGBoost entrarían como dependencias fijadas si se usan como candidatos. Empezar por un *baseline* sencillo y comparar siempre contra él sigue a Huyen (2022, cap. 6).
+`train.py` recibe la pregunta y el modelo (`baseline` o candidato), de modo que `make train` lo invoca una vez por combinación y cada ejecución es un *run* independiente. Lee el recibo de construcción y se niega a entrenar si la versión de datos o el esquema no coinciden con `config.py`. Construye un `Pipeline` de scikit-learn con preprocesamiento y estimador, lo ajusta con el bloque de entrenamiento, evalúa con el bloque de prueba y guarda el modelo en `models/`. scikit-learn cubre los modelos base y candidatos y las métricas de la sección 6; LightGBM entraría como dependencia fijada solo si se usa como candidato en P1. Empezar por un *baseline* sencillo y comparar siempre contra él sigue a Huyen (2022, cap. 6).
 
 ### 7. Registro de experimentos
 
-El registro se hace con MLflow Tracking (MLflow, s.f.) desde `train.py`, nunca solo desde un *notebook*. Un único experimento, `mibici-equipo10`, agrupa todos los *runs*; cada uno lleva un nombre descriptivo con pregunta, modelo y etapa (`P1-ridge-baseline`, `P2-logreg-baseline`, `P3-kmeans-baseline`) y registra lo que exige la actividad: como parámetros, `data_version`, `start_date`, `end_date`, las fechas de corte, `random_seed` y los hiperparámetros; como métricas, las de la sección 6 con el conjunto como prefijo (`test_mae`, `test_f1`, `train_silhouette`); como etiquetas, `team`, `question` y `git_commit`; como artefactos, al menos una figura por pregunta, el modelo y una copia del descriptor. Además, con `mlflow.log_input` el *run* registra el conjunto de datos como entrada, con el nombre de la versión, un *digest* calculado a partir de los hashes del descriptor y la URL del portal como fuente, de modo que la versión aparece en la pestaña de *datasets* del *run* en la interfaz de MLflow. Nunca credenciales ni datos personales, lo que queda garantizado porque las tablas de modelado ya no los contienen.
+El registro se hace con MLflow Tracking (MLflow, s.f.) desde `train.py`, nunca solo desde un *notebook*. Un único experimento, `mibici-equipo10`, agrupa todos los *runs*; cada uno lleva un nombre descriptivo con pregunta, etapa y modelo (`P1-baseline-dummy-estacion-hora`, `P2-baseline-dummy-estacion-intervalo-tipo-dia`, `P3-baseline-kmeans-k4`) y registra lo que exige la actividad: como parámetros, `version_datos`, las fechas de inicio y fin del periodo y de corte de la partición, `semilla`, el modelo y sus hiperparámetros; como métricas, las de la sección 6 con el conjunto como prefijo (`test_mae`, `test_recall_vaciarse`, `train_silhouette`); como etiquetas, `equipo`, `pregunta`, `git_commit` y `tipo_modelo`; como artefactos, al menos una figura por pregunta, el modelo y una copia del descriptor. Además, con `mlflow.log_input` el *run* registra el conjunto de datos como entrada, con el nombre de la versión, un *digest* calculado a partir de los hashes del descriptor y la URL del portal como fuente, de modo que la versión aparece en la pestaña de *datasets* del *run* en la interfaz de MLflow. Nunca credenciales ni datos personales, lo que queda garantizado porque las tablas de modelado ya no los contienen.
 
 El código no nombra ningún *backend*: lee `MLFLOW_TRACKING_URI` del archivo `.env` mediante python-dotenv. Esto permite dos modos con el mismo código, el mismo experimento y las mismas etiquetas:
 
-**Tabla 9.** Modos de registro de experimentos.
+**Tabla 10.** Modos de registro de experimentos.
 
 | Modo | Cuándo se usa | Configuración | Qué necesita el integrante |
 |------|---------------|---------------|----------------------------|
@@ -104,7 +104,7 @@ La Figura 3 resume cómo se encadenan estas piezas: el descriptor fija qué se l
 
 ## Resumen de herramientas y justificación
 
-**Tabla 10.** Herramientas por componente, alternativa considerada y justificación.
+**Tabla 11.** Herramientas por componente, alternativa considerada y justificación.
 
 | Componente | Herramienta | Alternativa considerada | Justificación |
 |------------|-------------|-------------------------|---------------|

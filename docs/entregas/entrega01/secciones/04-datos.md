@@ -6,9 +6,9 @@ Los datos de MiBici abarcan desde diciembre de 2014 hasta septiembre de 2026. Si
 
 ## Fuente de los archivos
 
-El repositorio donde se alojan los datos de MiBici es <https://mibici.net/es/datos-abiertos/>. Se accede a los viajes mensualmente; la Tabla 1 lista los 24 archivos que se utilizarán. Además, se utilizará el archivo de nomenclatura de las estaciones, alojado en <https://www.mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv>.
+El repositorio donde se alojan los datos de MiBici es <https://mibici.net/es/datos-abiertos/>. Se accede a los viajes mensualmente; la Tabla 2 lista los 24 archivos que se utilizarán. Además, se utilizará el archivo de nomenclatura de las estaciones, alojado en <https://www.mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv>.
 
-**Tabla 1.** Archivos mensuales de viajes utilizados en el proyecto.
+**Tabla 2.** Archivos mensuales de viajes utilizados en el proyecto.
 
 | Mes | Archivo |
 |-----|---------|
@@ -48,7 +48,7 @@ El repositorio donde se alojan los datos de MiBici es <https://mibici.net/es/dat
 
 ## Variables originales
 
-**Tabla 2.** Variables originales de los archivos de MiBici que se utilizan en el proyecto.
+**Tabla 3.** Variables originales de los archivos de MiBici que se utilizan en el proyecto.
 
 | Variable original | Archivo | Uso |
 |-------------------|---------|-----|
@@ -64,7 +64,7 @@ El repositorio donde se alojan los datos de MiBici es <https://mibici.net/es/dat
 
 ## Variables objetivo y cómo se construyen
 
-**Tabla 3.** Construcción de la variable objetivo de cada pregunta.
+**Tabla 4.** Construcción de la variable objetivo de cada pregunta.
 
 | Pregunta | Variable objetivo | Construcción |
 |----------|-------------------|--------------|
@@ -74,14 +74,14 @@ El repositorio donde se alojan los datos de MiBici es <https://mibici.net/es/dat
 
 ## Condiciones de uso de MiBici y tratamiento de datos personales
 
-Los datos se obtienen del portal de datos abiertos de MiBici, sistema administrado por la **Agencia Metropolitana de Servicios de Infraestructura para la Movilidad del Área Metropolitana de Guadalajara (AMIM)**. El portal no publica una licencia para los archivos. Sin embargo, el Reglamento Interno en materia de Transparencia de la AMIM establece que la Agencia gestiona su información bajo una política de datos abiertos que favorece la creación de conocimiento (art. 6, fr. IV), y que la información que genera es pública y de libre acceso, salvo la reservada o confidencial (art. 18). Con base en ello, los datos se usarán solo con fines académicos, no se redistribuirán y no se utilizarán directa o indirectamente para intentar identificar usuarios.
+Los datos se obtienen del portal de datos abiertos de MiBici, sistema administrado por la **Agencia Metropolitana de Servicios de Infraestructura para la Movilidad del Área Metropolitana de Guadalajara (AMIM)**. El portal no publica una licencia para los archivos. Sin embargo, el Reglamento Interno en materia de Transparencia de la AMIM (Agencia Metropolitana de Servicios de Infraestructura para la Movilidad del Área Metropolitana de Guadalajara [AMIM], 2024) establece que la Agencia gestiona su información bajo una política de datos abiertos que favorece la creación de conocimiento (art. 6, fr. IV), y que la información que genera es pública y de libre acceso, salvo la reservada o confidencial (art. 18). Con base en ello, los datos se usarán solo con fines académicos, no se redistribuirán y no se utilizarán directa o indirectamente para intentar identificar usuarios.
 
-El mismo reglamento considera confidencial la información con datos personales de una persona identificada o identificable (art. 21). Los archivos de viajes incluyen los campos `Usuario_Id`, `Genero` y `Año_de_nacimiento` que, combinados con los horarios y estaciones de cada viaje, podrían permitir identificar a una persona. Como las preguntas de negocio no requieren esta información, su uso será descartado del proyecto.
+El mismo reglamento (AMIM, 2024) considera confidencial la información con datos personales de una persona identificada o identificable (art. 21). Los archivos de viajes incluyen los campos `Usuario_Id`, `Genero` y `Año_de_nacimiento` que, combinados con los horarios y estaciones de cada viaje, podrían permitir identificar a una persona. Como las preguntas de negocio no requieren esta información, su uso será descartado del proyecto.
 
 ## Estrategia de partición de los datos
 
 La partición no puede ser aleatoria porque trabajamos con variables temporales: una partición al azar puede llevar a un entrenamiento sin representatividad de días o estaciones o, en el peor de los casos, a entrenar con datos futuros e introducir fuga de información. Las prácticas que se aplican en el proyecto para evitar estos escenarios son:
 
 - Utilizar variables construidas únicamente con datos disponibles antes del momento de la predicción. Si un modelo tiene como horizonte el día siguiente, solo se usan datos anteriores a esa fecha. En P1 se utilizarán datos de viajes hasta el cierre del día anterior y, en P2, hasta el cierre del intervalo anterior.
-- Se utilizarán tres particiones para los conjuntos de entrenamiento, validación y prueba, cada una de ellas con fechas específicas de división, que serán establecidas en `config.py`.
+- Se utilizan tres particiones cronológicas, con fechas de corte definidas una sola vez en `config.py`: **entrenamiento** del 1 de septiembre de 2024 al 28 de febrero de 2026 (18 meses), **validación** del 1 de marzo al 31 de mayo de 2026 (3 meses) y **prueba** del 1 de junio al 31 de agosto de 2026 (3 meses). Así el modelo siempre aprende del pasado y se evalúa en los meses más recientes, que simulan el desempeño futuro.
 - Las transformaciones solo serán ajustadas con el conjunto de entrenamiento y se aplicarán, sin recalcular, a los conjuntos de validación y prueba.

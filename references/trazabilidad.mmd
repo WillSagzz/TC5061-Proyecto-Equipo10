@@ -10,14 +10,14 @@ flowchart TB
   DATA[("<b>Datos regenerados</b><br/>data/processed · tablas P1 · P2 · P3")]
   RECEIPT["<b>Recibo de construcción</b><br/>data_version · commit · filas · esquema"]
 
-  RUN["<b>Run de MLflow</b><br/>params: data_version · start_date · end_date · fechas de corte · random_seed · hiperparámetros<br/>tags: team · question · git_commit<br/>métricas: test_mae · test_rmse · test_recall · test_f1 · …<br/>artefactos: figuras · modelo · descriptor<br/>dataset (log_input): nombre · digest · fuente"]
+  RUN["<b>Run de MLflow</b><br/>params: version_datos · fechas del periodo y de corte · semilla · modelo · hiperparámetros<br/>tags: equipo · pregunta · git_commit · tipo_modelo<br/>métricas: test_mae · test_rmse · test_recall_vaciarse · test_f1_macro · train_silhouette · …<br/>artefactos: figuras · modelo · descriptor<br/>dataset (log_input): nombre · digest · fuente"]
 
   MAN -- "make data verifica los hashes" --> DATA
   COMMIT -- "make data · make features" --> DATA
   REQ ~~~ DATA
   DATA --> RECEIPT
   RECEIPT -- "train.py comprueba antes de entrenar" --> RUN
-  MAN -. "param data_version" .-> RUN
+  MAN -. "param version_datos" .-> RUN
   COMMIT -. "tag git_commit" .-> RUN
   REQ -. "mismo entorno" .-> RUN
 
