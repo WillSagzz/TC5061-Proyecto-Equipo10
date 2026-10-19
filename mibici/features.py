@@ -1,15 +1,24 @@
 """Funciones de feature engineering para P1, P2 y P3.
 
-Todas parten de los dos Parquet limpios que entrega la ingesta (``dataset.py``), con el
-contrato de datos definido en ``config.py``. Ninguna usa datos personales.
+Implementa las Etapas 2 y 3 del pipeline de la propuesta (entrega 01, secciones 4 y 5) con
+el procedimiento del notebook de exploración (``notebooks/exploration.ipynb``): contar las
+salidas y las llegadas de cada estación en cada periodo, completar la malla estación × periodo
+con ceros y, a partir de ahí, construir la variable objetivo y las variables predictoras de
+cada pregunta.
+
+Todas las funciones parten de los dos Parquet limpios que entrega la ingesta (``dataset.py``),
+con el contrato de datos definido en ``config.py``. Ninguna usa datos personales.
 
 Funciones compartidas por las tres preguntas:
 
 - ``load_data``: carga los viajes y las estaciones y valida el contrato.
 - ``get_data_version``: versión de los datos, para registrarla en MLflow.
 - ``split_by_date``: partición temporal en entrenamiento, validación y prueba.
-- ``build_station_period_table``: salidas y llegadas por estación y periodo (P1 y P2).
+- ``build_station_period_table``: salidas, llegadas y flujo neto por estación y periodo
+  (P1 y P2).
 - ``add_calendar_features``: hora del día, día de la semana y fin de semana (P1 y P2).
+- ``add_lag_features``: rezagos y promedio móvil calculados solo con periodos anteriores
+  (P1 y P2).
 
 Funciones de cada pregunta: ``build_p1_table``, ``build_p2_table`` y ``build_p3_table``.
 """
@@ -27,9 +36,12 @@ from mibici.config import (
     DATA_END,
     DATA_MANIFEST_PATH,
     DAY_PERIODS,
+    FLOW_LAG_HOURS,
+    LAG_HOURS,
     NO_SERVICE_HOURS,
     P2_INTERVAL_HOURS,
     RISK_THRESHOLD,
+    ROLLING_WINDOW,
     STATION_COLUMNS,
     STATIONS_PATH,
     TEST_START,
@@ -56,13 +68,14 @@ RISK_FULL = "llenarse"
 NO_RISK = "sin_riesgo"
 RISK_CLASSES = [RISK_EMPTY, RISK_FULL, NO_RISK]
 
-# Variables con las que se agrupan las estaciones en P3 (latitud y longitud no entran)
+# Variables con las que se agrupan las estaciones en P3 (latitud y longitud no entran).
+# Son las cinco de la Tabla 4 de la propuesta; la primera ocupa cuatro columnas.
 P3_FEATURES = [
-    "share_morning",
-    "share_midday",
-    "share_afternoon",
-    "share_night",
-    "share_weekdays",
+    "morning_pct",
+    "midday_pct",
+    "afternoon_pct",
+    "night_pct",
+    "weekdays_pct",
     "log_daily_use_per_dock",
     "balance_morning",
     "balance_afternoon",
@@ -98,7 +111,8 @@ def validate_contract(trips: pd.DataFrame, stations: pd.DataFrame) -> None:
     """Verifica que los tipos de datos coincidan con el contrato de ``config.py``.
 
     Atiende P1, P2 y P3: si la ingesta cambia un tipo (por ejemplo, fechas guardadas como
-    texto), el error aparece aquí con un mensaje claro y no como un resultado incorrecto.
+    texto, como venían en los CSV originales), el error aparece aquí con un mensaje claro y
+    no como un resultado incorrecto.
 
     Args:
         trips: Viajes con las columnas de ``TRIP_COLUMNS``.
@@ -126,7 +140,9 @@ def load_data(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Carga los viajes y las estaciones que entrega la ingesta y valida el contrato.
 
-    Atiende P1, P2 y P3: es el único punto de entrada de los datos a los modelos.
+    Atiende P1, P2 y P3: es el único punto de entrada de los datos a los modelos. Los viajes
+    ya vienen limpios de ``dataset.py`` (fechas convertidas, sin horas sin servicio y solo
+    con estaciones de la nomenclatura), así que aquí no se repite esa limpieza.
 
     Args:
         trips_path: Parquet de viajes generado por ``dataset.py``.
@@ -220,18 +236,20 @@ def split_by_date(table: pd.DataFrame, time_column: str) -> dict[str, pd.DataFra
 
 
 # -----------------------------------------------------------------------------
-# Tablas por estación y periodo (P1 y P2)
+# Etapa 2: tabla base por estación y periodo (P1 y P2)
 # -----------------------------------------------------------------------------
 def build_station_period_table(
     trips: pd.DataFrame, stations: pd.DataFrame, freq: str = "h"
 ) -> pd.DataFrame:
-    """Cuenta las salidas y llegadas de cada estación en cada periodo.
+    """Cuenta las salidas y las llegadas de cada estación en cada periodo y su flujo neto.
 
-    Atiende P1 y P2 (Etapa 2 del pipeline). Una salida se asigna a la estación de origen y
-    al periodo de inicio del viaje; una llegada, a la estación de destino y al periodo de
-    fin. Las horas se redondean hacia abajo (08:47 pasa a 08:00). Se genera la malla
-    completa de estaciones por periodos y las combinaciones sin viajes quedan en 0, para
-    que las series sean continuas. P1 usa ``freq="h"``; P2 puede usar ``freq="3h"``.
+    Atiende P1 y P2 (Etapa 2 del pipeline). Sigue el procedimiento del notebook de
+    exploración: cada viaje se asigna dos veces, como salida de su estación de origen en el
+    periodo en que inicia y como llegada a su estación de destino en el periodo en que
+    termina. Las horas se redondean hacia abajo (08:47 pasa a 08:00). Se genera la malla
+    completa de estaciones activas por periodos, de las 0:00 del primer día a las 24:00 del
+    último, y las combinaciones sin viajes quedan en 0, para que las series sean continuas y
+    sin huecos. P1 usa ``freq="h"``; P2 usa intervalos de ``P2_INTERVAL_HOURS`` horas.
 
     Args:
         trips: Viajes de ``load_data``.
@@ -239,8 +257,8 @@ def build_station_period_table(
         freq: Duración del periodo, en formato de pandas.
 
     Returns:
-        Una fila por estación y periodo, con ``station_id``, ``period_start``,
-        ``departures`` y ``arrivals``.
+        Una fila por estación y periodo, ordenada por estación y periodo, con ``station_id``,
+        ``period_start``, ``departures``, ``arrivals`` y ``net_flow`` (llegadas − salidas).
     """
     known = stations["station_id"]
     departures = (
@@ -275,18 +293,22 @@ def build_station_period_table(
             "arrivals": arrivals.reindex(grid, fill_value=0).astype("int32"),
         }
     ).reset_index()
+    table["net_flow"] = (table["arrivals"] - table["departures"]).astype("int32")
     logger.info(
         f"Tabla estación × periodo ({freq}): {len(table):,} filas, {len(active_stations)} estaciones"
     )
     return table
 
 
+# -----------------------------------------------------------------------------
+# Etapa 3: variables de calendario e históricas (P1 y P2)
+# -----------------------------------------------------------------------------
 def add_calendar_features(table: pd.DataFrame, time_column: str = "period_start") -> pd.DataFrame:
     """Agrega la hora del día, el día de la semana y el indicador de fin de semana.
 
-    Atiende P1 y P2: la demanda sigue ciclos diarios (horas pico) y semanales (días
-    laborales frente a fin de semana). Solo usa la fecha del propio periodo, que se conoce
-    de antemano, así que no hay fuga de información del futuro.
+    Atiende P1 y P2 (Tabla 5 de la propuesta): la demanda sigue ciclos diarios (horas pico)
+    y semanales (días laborales frente a fin de semana). Solo usa la fecha del propio
+    periodo, que se conoce de antemano, así que no hay fuga de información del futuro.
 
     Args:
         table: Tabla con una columna de fechas.
@@ -304,25 +326,106 @@ def add_calendar_features(table: pd.DataFrame, time_column: str = "period_start"
     )
 
 
-def build_p1_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
-    """Construye la tabla de P1: viajes iniciados por estación y hora.
+def add_lag_features(
+    table: pd.DataFrame,
+    lags: dict[str, list[int]],
+    window: int = ROLLING_WINDOW,
+    window_column: str = "departures",
+) -> pd.DataFrame:
+    """Agrega rezagos y un promedio móvil calculados solo con periodos anteriores.
 
-    Atiende P1: la variable objetivo ``departures`` es el número de viajes que salen de la
-    estación en cada hora, la demanda que el operador necesita anticipar para planear la
-    flota. Se excluyen las horas de ``NO_SERVICE_HOURS`` (de 1:00 a 4:59), en las que el
-    sistema no permite retirar bicicletas, porque ahí la demanda es 0 por regla y no por
-    comportamiento de los usuarios.
+    Atiende P1 y P2 (Etapa 3 del pipeline, Tabla 5 de la propuesta). Para cada columna de
+    ``lags`` crea ``<columna>_lag_<n>``: el valor de la misma estación ``n`` periodos antes
+    (en P1, horas; en P2, intervalos de 3 horas). Para ``window_column`` crea
+    ``<columna>_mean_<window>``: el promedio de los ``window`` periodos cerrados
+    inmediatamente anteriores, de t − window a t − 1. Los rezagos capturan la inercia
+    inmediata de la estación y su hábito diario y semanal; el promedio móvil suaviza una
+    sola hora atípica y muestra si la demanda se acelera o se frena.
+
+    No hay fuga de información del futuro: todas las ventanas terminan en el periodo
+    anterior (t − 1) y nunca incluyen el periodo que se predice. El rezago de un periodo y el
+    promedio móvil sirven para el horizonte de un periodo (el siguiente intervalo, en P2);
+    para el horizonte de 24 horas de P1 (pronóstico al cierre del día anterior), los
+    candidatos deben usar solo los rezagos de 24 horas o más. Las primeras filas de cada
+    estación, sin historial suficiente, quedan como NaN.
+
+    Requiere la malla completa y regular de ``build_station_period_table``: así un rezago de
+    ``n`` filas dentro de cada estación equivale exactamente a ``n`` periodos.
+
+    Args:
+        table: Tabla de ``build_station_period_table`` (puede llevar más columnas).
+        lags: Columnas a rezagar y, para cada una, los rezagos en número de periodos.
+        window: Número de periodos cerrados previos del promedio móvil.
+        window_column: Columna a la que se aplica el promedio móvil.
+
+    Returns:
+        La misma tabla, ordenada por estación y periodo, con las columnas nuevas
+        (``float32``).
+
+    Raises:
+        ValueError: Si alguna estación no tiene todos los periodos de la malla.
+    """
+    n_periods = table["period_start"].nunique()
+    irregular = table.groupby("station_id").size() != n_periods
+    if irregular.any():
+        raise ValueError(
+            f"La malla estación × periodo no es regular ({irregular.sum()} estaciones con "
+            "periodos faltantes). Calcula los rezagos sobre la tabla completa de "
+            "build_station_period_table, antes de filtrar filas."
+        )
+    table = table.sort_values(["station_id", "period_start"]).reset_index(drop=True)
+    grouped = table.groupby("station_id", sort=False)
+    new_columns = {}
+    for column, steps in lags.items():
+        for step in steps:
+            new_columns[f"{column}_lag_{step}"] = grouped[column].shift(step).astype("float32")
+    new_columns[f"{window_column}_mean_{window}"] = (
+        grouped[window_column]
+        .transform(lambda values: values.shift(1).rolling(window).mean())
+        .astype("float32")
+    )
+    logger.info(f"Variables históricas: {', '.join(new_columns)}")
+    return table.assign(**new_columns)
+
+
+# -----------------------------------------------------------------------------
+# P1: viajes iniciados por estación y hora
+# -----------------------------------------------------------------------------
+def build_p1_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
+    """Construye la tabla de P1: viajes iniciados por estación y hora, con sus predictores.
+
+    Atiende P1 (Tablas 4 y 5 de la propuesta): la variable objetivo ``departures`` es el
+    número de viajes que salen de la estación en cada hora, la demanda que el operador
+    necesita anticipar para planear la flota. Lleva además las llegadas y el flujo neto de la
+    hora, la capacidad de la estación, las variables de calendario y las históricas: salidas
+    1 h, 24 h y 7 días antes (``LAG_HOURS``), llegadas y flujo neto 1 h y 24 h antes
+    (``FLOW_LAG_HOURS``) y el promedio móvil de salidas de las ``ROLLING_WINDOW`` horas
+    cerradas previas.
+
+    Los rezagos se calculan sobre la malla horaria completa y solo después se excluyen las
+    horas de ``NO_SERVICE_HOURS`` (de 1:00 a 4:59), en las que el sistema no presta
+    bicicletas: ahí la demanda es 0 por regla y no por comportamiento de los usuarios, pero
+    siguen contando como historial (a las 5:00, el rezago de 1 h es la hora de las 4:00).
 
     Args:
         trips: Viajes de ``load_data``.
         stations: Estaciones de ``load_data``.
 
     Returns:
-        Una fila por estación y hora, con ``departures`` y las variables de calendario.
+        Una fila por estación y hora de servicio, con ``departures``, ``arrivals``,
+        ``net_flow``, ``capacity``, las variables de calendario y las históricas.
     """
     table = build_station_period_table(trips, stations, freq="h")
+    table = add_calendar_features(table)
+    table = table.merge(stations[["station_id", "capacity"]], on="station_id", how="left")
+    table = add_lag_features(
+        table,
+        {"departures": LAG_HOURS, "arrivals": FLOW_LAG_HOURS, "net_flow": FLOW_LAG_HOURS},
+        window=ROLLING_WINDOW,
+    )
     table = table.loc[~table["period_start"].dt.hour.isin(NO_SERVICE_HOURS)]
-    return add_calendar_features(table.reset_index(drop=True))
+    logger.info(f"Tabla P1: {len(table):,} filas de estación × hora de servicio")
+    return table.reset_index(drop=True)
 
 
 # -----------------------------------------------------------------------------
@@ -331,10 +434,12 @@ def build_p1_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
 def label_risk(net_flow: pd.Series, capacity: pd.Series) -> pd.Series:
     """Etiqueta el riesgo de cada estación e intervalo a partir de su flujo neto.
 
-    Atiende P2: sin inventario en tiempo real, el riesgo se aproxima con el flujo neto
-    (llegadas − salidas) comparado con la capacidad de la estación. Si el flujo es menor o
-    igual a −``RISK_THRESHOLD`` × capacidad, la estación tiende a vaciarse; si es mayor o
-    igual a +``RISK_THRESHOLD`` × capacidad, a llenarse; en otro caso, no hay riesgo.
+    Atiende P2 (Tabla 4 de la propuesta): sin inventario en tiempo real, el riesgo se
+    aproxima con el flujo neto (llegadas − salidas) comparado con la capacidad de la
+    estación. Si el flujo es menor o igual a −``RISK_THRESHOLD`` × capacidad, la estación
+    tiende a vaciarse; si es mayor o igual a +``RISK_THRESHOLD`` × capacidad, a llenarse; en
+    otro caso, no hay riesgo. El umbral sí se aplica: un flujo distinto de cero pero menor al
+    40 % de la capacidad es ``"sin_riesgo"``.
 
     Args:
         net_flow: Llegadas menos salidas en el intervalo.
@@ -350,15 +455,25 @@ def label_risk(net_flow: pd.Series, capacity: pd.Series) -> pd.Series:
     return pd.Series(risk, index=net_flow.index, name="risk")
 
 
+def _hours_to_intervals(hours: int) -> int:
+    """Convierte un rezago en horas a intervalos de P2; nunca menos de un intervalo."""
+    return max(1, hours // P2_INTERVAL_HOURS)
+
+
 def build_p2_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     """Construye la tabla de P2: salidas, llegadas y riesgo por estación e intervalo de 3 h.
 
-    Atiende P2: el día se divide en 8 intervalos de ``P2_INTERVAL_HOURS`` horas
-    (``interval_of_day`` de 0 a 7). Una salida cuenta en el intervalo de inicio del viaje y
-    una llegada en el intervalo de fin. Se excluyen las estaciones con capacidad 0, porque
-    el umbral de riesgo depende de la capacidad. La variable objetivo ``risk`` solo usa los
-    movimientos del propio intervalo; las variables de los candidatos deberán usar solo
-    intervalos anteriores.
+    Atiende P2 (Tablas 4 y 5 de la propuesta): el día se divide en 8 intervalos de
+    ``P2_INTERVAL_HOURS`` horas (``interval_of_day`` de 0 a 7). Una salida cuenta en el
+    intervalo de inicio del viaje y una llegada en el intervalo de fin. Se excluyen las
+    estaciones con capacidad 0, porque el umbral de riesgo depende de la capacidad. La
+    variable objetivo ``risk`` solo usa los movimientos del propio intervalo.
+
+    Las variables históricas son las de P1 expresadas en intervalos: salidas 1, 8 (24 h) y
+    56 (7 días) intervalos antes, llegadas y flujo neto 1 y 8 intervalos antes, y el promedio
+    móvil de salidas de los ``ROLLING_WINDOW`` intervalos cerrados previos. Todas usan solo
+    intervalos anteriores al que se predice, como exige el horizonte de P2 (el intervalo
+    siguiente, con los viajes ocurridos hasta el cierre del actual).
 
     Args:
         trips: Viajes de ``load_data``.
@@ -366,14 +481,20 @@ def build_p2_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
 
     Returns:
         Una fila por estación e intervalo, con ``departures``, ``arrivals``, ``net_flow``,
-        ``capacity``, ``risk`` y las variables de calendario.
+        ``capacity``, ``risk``, las variables de calendario y las históricas.
     """
     with_capacity = stations.loc[stations["capacity"] > 0, ["station_id", "capacity"]]
     table = build_station_period_table(trips, with_capacity, freq=f"{P2_INTERVAL_HOURS}h")
     table = add_calendar_features(table).merge(with_capacity, on="station_id")
     table["interval_of_day"] = (table["hour_of_day"] // P2_INTERVAL_HOURS).astype("int8")
-    table["net_flow"] = table["arrivals"] - table["departures"]
     table["risk"] = label_risk(table["net_flow"], table["capacity"])
+    departure_lags = [_hours_to_intervals(hours) for hours in LAG_HOURS]
+    flow_lags = [_hours_to_intervals(hours) for hours in FLOW_LAG_HOURS]
+    table = add_lag_features(
+        table,
+        {"departures": departure_lags, "arrivals": flow_lags, "net_flow": flow_lags},
+        window=ROLLING_WINDOW,
+    )
     shares = table["risk"].value_counts(normalize=True).round(4).to_dict()
     logger.info(f"Tabla P2: {len(table):,} filas; clases: {shares}")
     return table
@@ -383,7 +504,11 @@ def build_p2_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
 # P3: perfil de uso de cada estación
 # -----------------------------------------------------------------------------
 def _day_period(hours: pd.Series) -> pd.Series:
-    """Asigna cada hora a su periodo del día según ``DAY_PERIODS``."""
+    """Asigna cada hora a su periodo del día según ``DAY_PERIODS``.
+
+    La noche cruza la medianoche (20:00 a 4:59), por eso ese periodo se evalúa como
+    ``hora >= inicio`` o ``hora < fin`` y no como un rango continuo.
+    """
     conditions, names = [], []
     for name, (start, end) in DAY_PERIODS.items():
         in_period = (
@@ -434,13 +559,15 @@ def _balance(arrivals: pd.Series, departures: pd.Series) -> pd.Series:
 def build_p3_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     """Construye la tabla de P3: una fila por estación con su perfil de uso.
 
-    Atiende P3: describe cómo se usa cada estación para agruparlas por patrón de uso y no
-    por volumen. Solo usa los movimientos del periodo de entrenamiento (``TRAIN_START`` a
-    ``VALIDATION_START``) y excluye las estaciones con capacidad 0. Variables
-    (``P3_FEATURES``):
+    Atiende P3 (Tablas 4 y 6 de la propuesta): describe cómo se usa cada estación para
+    agruparlas por patrón de uso y no por volumen. Un movimiento es cada salida o llegada,
+    así que cada viaje aporta dos. Solo usa los movimientos del periodo de entrenamiento
+    (``TRAIN_START`` a ``VALIDATION_START``) y excluye las estaciones con capacidad 0.
+    Variables (``P3_FEATURES``):
 
-    - ``share_<periodo>``: proporción de movimientos en cada periodo de ``DAY_PERIODS``.
-    - ``share_weekdays``: proporción de movimientos de lunes a viernes.
+    - ``<periodo>_pct``: porcentaje (0 a 100) de los movimientos en cada periodo de
+      ``DAY_PERIODS``; las cuatro columnas suman 100.
+    - ``weekdays_pct``: porcentaje de los movimientos de lunes a viernes.
     - ``log_daily_use_per_dock``: log(1 + movimientos por día ÷ capacidad), la presión
       sobre los anclajes; el logaritmo evita que unas pocas estaciones extremas dominen.
     - ``balance_morning`` y ``balance_afternoon``: (llegadas − salidas) ÷ (llegadas +
@@ -467,9 +594,9 @@ def build_p3_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     total = movements.groupby("station_id").size()
     table = pd.DataFrame(index=total.index)
     for period in DAY_PERIODS:
-        table[f"share_{period}"] = counts[period].sum(axis=1) / total
+        table[f"{period}_pct"] = counts[period].sum(axis=1) / total * 100
     is_weekday = movements["time"].dt.dayofweek < 5
-    table["share_weekdays"] = is_weekday.groupby(movements["station_id"]).mean()
+    table["weekdays_pct"] = is_weekday.groupby(movements["station_id"]).mean() * 100
 
     capacity = with_capacity.set_index("station_id")["capacity"].reindex(table.index)
     n_days = (pd.Timestamp(VALIDATION_START) - pd.Timestamp(TRAIN_START)).days

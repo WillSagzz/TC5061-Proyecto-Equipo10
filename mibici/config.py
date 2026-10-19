@@ -95,6 +95,12 @@ MLFLOW_EXPERIMENT_NAME = f"mibici-{TEAM}"
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
 MLFLOW_ARTIFACTS_DIR = PROJ_ROOT / "mlartifacts"
 
+# P1 y P2: variables históricas de la Tabla 5 de la propuesta (features.py). Se expresan en
+# horas; P2 las convierte a intervalos (1 intervalo, 24 h = 8 intervalos y 7 días = 56).
+LAG_HOURS = [1, 24, 24 * 7]  # salidas registradas 1 h, 24 h y 7 días antes
+FLOW_LAG_HOURS = [1, 24]  # llegadas y flujo neto 1 h y 24 h antes
+ROLLING_WINDOW = 3  # promedio móvil de salidas: periodos cerrados previos al que se predice
+
 # P2: riesgo de que una estación se vacíe o se llene
 P2_INTERVAL_HOURS = 3  # 8 intervalos por día
 RISK_THRESHOLD = 0.4  # fracción de la capacidad que debe alcanzar el flujo neto
