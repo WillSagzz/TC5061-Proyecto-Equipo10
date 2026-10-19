@@ -108,12 +108,15 @@ para que las métricas de las entregas sean comparables.
 | `dpcapacity` | nomenclatura | Capacidad de anclajes; define el umbral de riesgo de P2 y la rotación por anclaje de P3. |
 
 Las variables derivadas se implementan como funciones documentadas en
-[`mibici/features.py`](mibici/features.py): salidas y llegadas por estación y periodo, hora del
-día, día de la semana y fin de semana, la etiqueta de riesgo de P2 y el perfil de uso de cada
-estación para P3 (proporción de movimientos por periodo del día y en días laborales, uso
-diario por anclaje en escala logarítmica y balances de mañana y tarde, calculados solo con el
-periodo de entrenamiento). Los rezagos de 1 h, 24 h y 7 días y los promedios móviles que usarán
-los candidatos se agregarán al mismo módulo. El catálogo y su justificación están en la
+[`mibici/features.py`](mibici/features.py), siguiendo el procedimiento del notebook de
+exploración y el catálogo de la propuesta: salidas, llegadas y flujo neto por estación y
+periodo; hora del día, día de la semana y fin de semana; capacidad de la estación; salidas
+registradas 1 h, 24 h y 7 días antes, llegadas y flujo neto 1 h y 24 h antes y promedio móvil
+de las 3 horas cerradas previas (en P2, los mismos rezagos en intervalos de 3 horas); la
+etiqueta de riesgo de P2; y el perfil de uso de cada estación para P3 (porcentaje de
+movimientos por periodo del día y en días laborales, uso diario por anclaje en escala
+logarítmica y balances de mañana y tarde, calculados solo con el periodo de entrenamiento).
+Los rezagos y las ventanas viven en `config.py`. El catálogo y su justificación están en la
 [sección 5 de la propuesta](docs/entregas/entrega01/secciones/05-pipeline.md).
 
 ### Condiciones de uso y datos personales
