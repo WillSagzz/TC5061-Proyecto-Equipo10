@@ -4,30 +4,8 @@ El repositorio `TC5061-Proyecto-Equipo10` es público y está disponible en <htt
 
 ## Estructura del repositorio
 
-La estructura se generó con la plantilla Cookiecutter Data Science (DrivenData, s.f.) mediante `pipx install cookiecutter-data-science` y `ccds`, con la opción `include_code_scaffold` en `Yes`, y se subió como primer *commit*. Se respeta la separación de carpetas de la plantilla y se agregan únicamente la carpeta `docs/entregas/`, con la fuente de los entregables, y los archivos de `references/` que pide la actividad.
+La estructura se generó con la plantilla Cookiecutter Data Science (DrivenData, s.f.) mediante `pipx install cookiecutter-data-science` y `ccds`, con la opción `include_code_scaffold` en `Yes`, y se subió como primer *commit*. Se respeta la separación de carpetas de la plantilla (datos en `data/`, notebooks en `notebooks/`, código en el módulo `mibici/`, modelos en `models/`, figuras en `reports/figures/`, ML Canvas y diagramas en `references/`) y se agrega únicamente la carpeta `docs/entregas/`, con la fuente en Markdown de este documento (Figura 14). El README describe cada carpeta y archivo.
 
-```text
-TC5061-Proyecto-Equipo10/
-├── .gitignore            <- Excluye datos, mlruns/, modelos serializados y .env
-├── Makefile              <- make data, features, train, lint, format, entrega01
-├── README.md             <- Propósito, datos, instalación, comandos, flujo Git
-├── pyproject.toml        <- Metadatos del paquete mibici y configuración de Ruff
-├── requirements.txt      <- Dependencias con versión fija
-├── data/                 <- Excluida de Git; la reconstruye make data
-├── docs/entregas/        <- Fuente en Markdown de este PDF y su compilador
-├── models/               <- Modelos serializados; excluidos de Git
-├── notebooks/            <- Solo exploración: 1.0-gsg-descarga-dataset.ipynb
-├── references/           <- ML Canvas y diagramas (html, mmd, pdf, png)
-├── reports/figures/      <- Figuras generadas por el código
-└── mibici/               <- Módulo del proyecto
-    ├── config.py         <- Rutas, fechas, semilla y parámetros
-    ├── dataset.py        <- Ingesta reproducible y versionado de datos
-    ├── features.py       <- Funciones de feature engineering con docstring
-    ├── plots.py          <- Figuras
-    └── modeling/
-        ├── train.py      <- Entrenamiento y registro de runs en MLflow
-        └── predict.py    <- Inferencia con modelos entrenados
-```
 
 ![Figura 14. Estructura del repositorio TC5061-Proyecto-Equipo10 en GitHub.](../figuras/repositorio_estructura.png)
 
@@ -52,23 +30,19 @@ La Tabla 15 recorre las prácticas obligatorias de la actividad e indica cómo l
 
 ## Flujo de trabajo con Git/GitHub
 
-El equipo sigue GitHub Flow (GitHub, s.f.-b): `main` es la única rama de larga duración, cada cambio nace en una rama corta y entra a `main` mediante un *Pull Request* revisado y aprobado por otro integrante. El flujo completo, con ejemplos, está documentado en el README del repositorio.
+El equipo sigue GitHub Flow (GitHub, s.f.-b): `main` es la única rama de larga duración, cada cambio nace en una rama corta nombrada según Conventional Branch (Conventional Branch, s.f.), con *commits* según Conventional Commits 1.0.0 (Conventional Commits, s.f.), y entra a `main` mediante un *Pull Request* revisado y aprobado por otro integrante (GitHub, s.f.-c). `main` tiene una regla de protección activa (GitHub, s.f.-a) que exige *Pull Request* con al menos una aprobación, descarta las aprobaciones anteriores cuando llegan *commits* nuevos, exige resolver las conversaciones antes de mezclar y bloquea los *force push* y el borrado de la rama, también para el dueño del repositorio. Los cuatro integrantes han abierto al menos un *Pull Request*, han revisado y aprobado al menos uno de otro integrante y tienen *commits* en el historial de `main`.
 
-- **Rama principal protegida.** `main` tiene una regla de protección activa en GitHub (GitHub, s.f.-a) que exige *Pull Request* con al menos una aprobación, descarta las aprobaciones anteriores cuando llegan *commits* nuevos, exige resolver todas las conversaciones antes de mezclar, permite solo mezclas por *squash* y bloquea los *force push* y el borrado de la rama. La regla aplica también al dueño del repositorio.
-- **Convención de nombres de ramas.** Conventional Branch (Conventional Branch, s.f.): `tipo/descripcion` en minúsculas y con guiones, con los tipos `feature/`, `bugfix/`, `hotfix/`, `release/` y `chore/`; por ejemplo, `feature/download-dataset` o `chore/entrega01-propuesta-pdf`.
-- **Convención de mensajes de commit.** Conventional Commits 1.0.0 (Conventional Commits, s.f.): `tipo(ámbito): descripción` en imperativo, con los ámbitos `dataset`, `features`, `config`, `modeling`, `mlflow`, `notebooks`, `readme` y `deps`; por ejemplo, `docs(entregas): redacta la sección de arquitectura de la entrega 01`. Los cambios incompatibles se marcan con `!`.
-- **Pull Requests y revisiones.** El título del PR sigue el formato de los *commits* y la descripción indica qué cambia, por qué y cómo probarlo desde un clon limpio. Quien revisa (GitHub, s.f.-c) comprueba que el código corre siguiendo el README, que `make lint` pasa, que no se versionan datos ni credenciales, que la configuración sigue centralizada en `config.py` y que las funciones nuevas de `features.py` tienen *docstring* y no usan información del futuro.
-- **Evidencia de colaboración.** Los cuatro integrantes han abierto al menos un *Pull Request*, han revisado y aprobado al menos uno de otro integrante y tienen *commits* en el historial de `main`. La evidencia vive en la pestaña de *Pull Requests* del repositorio (<https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pulls?q=is%3Apr>), que se mantiene actualizada conforme avanza el proyecto.
+El flujo completo (ciclo de trabajo, tipos de rama y de *commit*, plantilla y lista de revisión de los *Pull Requests*) está documentado en el README del repositorio, y la evidencia de colaboración se consulta en la pestaña de *Pull Requests* (<https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pulls?q=is%3Apr>), que se mantiene actualizada conforme avanza el proyecto.
 
 ## Integrantes y roles
 
-Todos los integrantes participan en la propuesta, revisan los *Pull Requests* de los demás y contribuyen código y documentación; el rol indica el frente del que cada uno es responsable principal.
+Todos los integrantes participan en la propuesta, revisan los *Pull Requests* de los demás y contribuyen código y documentación; el rol indica el frente del que cada uno es responsable principal, como se documenta en el README.
 
 **Tabla 16.** Integrantes del equipo y roles.
 
-| Integrante | Matrícula | Usuario de GitHub | Rol principal |
-|------------|-----------|-------------------|---------------|
-| Mariely Toribio Rodríguez | A01797848 | `a01797848` | Formulación de las preguntas, definición de los datos, modelos y métricas |
-| Alan Augusto Herrera Sánchez | A01338336 | `alanhsa9` | ML Canvas y experimento base en MLflow |
-| Guillermo Sáenz González | A00823049 | `WillSagzz` | Administración del repositorio en GitHub, ingesta reproducible y versionado de datos |
-| Victor Yoguel Salazar Alanis | A01797950 | `CFOP2357` | Flujo de trabajo con Git, arquitectura del sistema y compilación del entregable |
+| Integrante | Matrícula | Usuario de GitHub | Rol | Responsabilidad |
+|------------|-----------|-------------------|-----|-----------------|
+| Mariely Toribio Rodríguez | A01797848 | `a01797848` | **Data Scientist** | Formulación de las preguntas, exploración de los datos, modelos y métricas. |
+| Guillermo Sáenz González | A00823049 | `WillSagzz` | **Data Engineer** | Ingesta y versionado de los datos; administración del repositorio. |
+| Victor Yoguel Salazar Alanis | A01797950 | `CFOP2357` | **Machine Learning Architect** | Arquitectura del sistema, flujo de trabajo, registro de experimentos y entorno reproducible. |
+| Alan Augusto Herrera Sánchez | A01338336 | `alanhsa9` | **Subject Matter Expert** | ML Canvas y validación de las decisiones desde la operación de MiBici. |

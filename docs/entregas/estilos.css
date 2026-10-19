@@ -32,7 +32,9 @@ h1, h2, h3, h4 {
   page-break-after: avoid;
   break-after: avoid;
 }
-h1 { font-size: 20pt; margin: 0 0 0.6em; padding-bottom: 0.2em; border-bottom: 2px solid var(--azul); }
+h1 { font-size: 20pt; margin: 0 0 0.6em; padding-bottom: 0.2em; border-bottom: 2px solid var(--azul); counter-increment: seccion; }
+h1::before { content: counter(seccion) ". "; }
+body { counter-reset: seccion; }
 h2 { font-size: 15pt; margin: 1.4em 0 0.5em; }
 h3 { font-size: 12.5pt; margin: 1.2em 0 0.4em; }
 h4 { font-size: 11pt; margin: 1em 0 0.3em; color: #333; }
@@ -126,7 +128,9 @@ p:has(> strong:first-child):has(+ table) { break-after: avoid-page; page-break-a
 .toc ul { list-style: none; padding-left: 0; margin: 0; }
 .toc ul ul { padding-left: 1.4em; }
 .toc li { margin: 0; }
-.toc > ul > li { margin-top: 0.45em; font-weight: 600; }
+.toc > ul { counter-reset: toc; }
+.toc > ul > li { margin-top: 0.45em; font-weight: 600; counter-increment: toc; }
+.toc > ul > li > a::before { content: counter(toc) ". "; }
 .toc > ul > li li { font-weight: 400; }
 .toc a { overflow-wrap: normal; }
 
