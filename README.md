@@ -5,191 +5,395 @@
 </a>
 
 Proyecto MiBici — propuesta de solución de *Machine Learning* sobre los datos abiertos del
-sistema de bicicleta pública del Área Metropolitana de Guadalajara.
+sistema de bicicleta pública del Área Metropolitana de Guadalajara. Proyecto integrador del
+curso **Operaciones de aprendizaje automático (TC5061)**, Tecnológico de Monterrey, Equipo 10.
 
 ## Propósito del proyecto
 
-<!-- TODO: descripción del problema de negocio, alcance y qué entrega el proyecto. -->
+MiBici opera todos los días del año con 470 estaciones y 5,040 bicicletas en Guadalajara,
+Zapopan y Tlaquepaque, y publica en su
+[portal de datos abiertos](https://mibici.net/es/datos-abiertos/) un CSV por mes con cada
+viaje realizado desde diciembre de 2014, además del catálogo de estaciones con su ubicación y
+capacidad.
+
+El proyecto traduce tres retos operativos de MiBici en tres problemas complementarios de
+*Machine Learning* (regresión, clasificación y *clustering*) que apoyan la planeación de la
+flota, el rebalanceo de bicicletas y la expansión del sistema. Esta primera entrega deja la
+base del curso: la propuesta de solución, una ingesta reproducible con datos versionados, el
+módulo de *feature engineering* y una línea base por pregunta registrada en MLflow, contra la
+que se medirá cualquier mejora posterior.
+
+El alcance es el procesamiento por lotes en una sola máquina: las predicciones son diarias
+(P1), cada tres horas (P2) y mensuales (P3), y el volumen de datos cabe en una computadora
+portátil, por lo que no se necesita un servicio de predicción en línea ni cómputo distribuido.
 
 ## Preguntas del proyecto
 
-| # | Pregunta de negocio | Tipo de tarea | Quién la usaría |
+| # | Pregunta de negocio | Tipo de tarea | Quién la usaría y qué decide |
 |---|---|---|---|
-| **P1** | ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro? | Regresión | Operador del sistema, para planear la flota |
-| **P2** | ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes disponibles en un periodo futuro? | Clasificación | Equipo de rebalanceo de bicicletas |
-| **P3** | ¿Qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad? | *Clustering* | Planeación urbana y expansión del sistema |
+| **P1** | ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro? | Regresión | Operador del sistema: dimensiona la flota activa en calle, programa mantenimiento en horas valle y asigna turnos. |
+| **P2** | ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes disponibles en un periodo futuro? | Clasificación | Equipo de rebalanceo: decide qué estaciones atender primero y cuántas bicicletas abastecer o retirar. |
+| **P3** | ¿Qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad? | *Clustering* | Planeación urbana y expansión: dónde instalar estaciones nuevas y cuáles ampliar. |
 
-<!-- TODO: formulación de cada pregunta como problema de ML (variable objetivo, granularidad,
-     horizonte) y la aproximación del riesgo en P2. -->
+### Formulación como problemas de ML
+
+| | P1 · Regresión | P2 · Clasificación | P3 · *Clustering* |
+|---|---|---|---|
+| **Qué se predice o agrupa** | Número de viajes iniciados (salidas) en una estación. | Una de tres clases: *riesgo de vaciarse*, *riesgo de llenarse* o *sin riesgo*. | Perfiles funcionales de estaciones con hábitos de uso similares, proyectados después en el mapa. |
+| **Granularidad** | Estación × hora. | Estación × intervalo de 3 horas (8 intervalos por día). | Estación (comportamiento consolidado de todo el periodo). |
+| **Horizonte** | 24 horas: al cierre de cada día se pronostica hora por hora el día siguiente. | 3 horas: al cierre de cada intervalo se pronostica el intervalo siguiente. | Estructural e histórico; se recalcula mensualmente. |
+| **Variable objetivo** | Conteo de salidas por estación y hora; las combinaciones sin viajes valen cero y se excluyen las horas de 1:00 a 4:59, sin servicio. | Flujo neto (llegadas − salidas) del intervalo comparado con la capacidad de la estación. | No hay: se agrupa sobre el perfil de uso de cada estación. |
+| **Modelo *baseline*** | `DummyRegressor(strategy="mean")` por estación y hora del día. | `DummyClassifier(strategy="prior")` por estación, intervalo del día y tipo de día (laboral o fin de semana). | `StandardScaler` + `KMeans` con 4 grupos; silueta y Davies-Bouldin registradas para `k` de 2 a 8. |
+| **Modelos candidatos** | `Ridge` con rezagos y calendario; `HistGradientBoostingRegressor` o LightGBM. | `LogisticRegression(class_weight="balanced")`; `HistGradientBoostingClassifier`. | `KMeans` con selección de `k`; `AgglomerativeClustering`. |
+| **Métricas** | `test_mae`, `test_rmse` — en unidades de viajes; la RMSE penaliza los fallos grandes en hora pico. | `test_recall_vaciarse`, `test_recall_llenarse`, precisión y precisión promedio por clase, `test_f1_macro` — el falso negativo es el error más caro para rebalanceo. | `train_silhouette`, `train_davies_bouldin` — cohesión y separación de los grupos. |
+
+**Aproximación del riesgo en P2.** Los datos abiertos no incluyen el inventario de bicicletas
+por estación, así que el riesgo se aproxima con la presión del flujo neto sobre el tamaño
+físico de la estación. Para cada estación e intervalo de 3 horas se cuentan las llegadas y
+las salidas, se calcula el flujo neto (llegadas − salidas) y se compara con la capacidad de
+anclajes del catálogo: *riesgo de vaciarse* si el flujo es ≤ −40 % de la capacidad, *riesgo
+de llenarse* si es ≥ +40 % y *sin riesgo* en el resto. El criterio pondera la gravedad según
+el tamaño real de cada estación (perder 8 bicicletas es crítico con 12 anclajes y manejable
+con 40) y evita arrastrar errores acumulados de los movimientos de rebalanceo, que no están
+en los datos. El umbral y el intervalo viven en [`mibici/config.py`](mibici/config.py).
+
+La formulación completa está en la
+[sección 2 de la propuesta](docs/entregas/entrega01/secciones/02-formulacion.md).
 
 ## Datos utilizados
 
-<!-- TODO: fuente, rango de fechas y su justificación, tamaño real obtenido (meses, viajes,
-     estaciones), variables originales, licencia de uso y estrategia de partición. -->
+### Fuente
+
+Portal de datos abiertos de MiBici: <https://mibici.net/es/datos-abiertos/>, administrado por
+la Agencia Metropolitana de Servicios de Infraestructura para la Movilidad (AMIM).
+
+| Archivo | Contenido | Formato |
+|---|---|---|
+| `datos_abiertos_AAAA_MM.csv` (uno por mes) | Un registro por viaje: identificador, usuario, fecha y hora de inicio y fin, estación de origen y destino. | CSV; la codificación (Latin-1 o UTF-8), el formato de fecha y el estilo de comillas varían entre meses. |
+| [`nomenclatura_2026_09.csv`](https://www.mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv) | Catálogo de estaciones: `id`, `name`, `latitude`, `longitude`, `dpcapacity` (anclajes). | CSV; se sobrescribe en la misma URL en cada actualización. |
+
+Los enlaces de los archivos mensuales llevan un identificador numérico que asigna el portal,
+por lo que la ingesta los descubre leyendo la página en lugar de mantener una lista a mano. La
+lista de los 24 archivos usados está en la
+[sección 4 de la propuesta](docs/entregas/entrega01/secciones/04-datos.md).
+
+### Rango de fechas y justificación
+
+Se usan los **24 meses de septiembre de 2024 a agosto de 2026** (`START_DATE` y `END_DATE` en
+`config.py`). Es el periodo más reciente con dos ciclos anuales completos, lo que captura la
+estacionalidad con hábitos de movilidad actuales, evita los años 2020 y 2021 alterados por la
+pandemia y excluye estaciones que ya no existen. La ventana se congela durante todo el curso
+para que las métricas de las entregas sean comparables.
+
+### Tamaño real obtenido
+
+| Medida | Valor |
+|---|---|
+| Meses | 24 (2024-09 a 2026-08) |
+| Viajes | 8,943,941 (promedio de 372,664 por mes); 8,702,429 tras la limpieza, según `data_manifest.json` |
+| Estaciones en el catálogo | 484 |
+| Estaciones con viajes en el periodo | 472, de las cuales 470 están en el catálogo |
+| Estaciones con viajes pero sin catálogo | 2 (ID 405 y 407; se excluyen en la limpieza) |
+| Tamaño en disco | 758 MB en CSV; 158 MB en Parquet |
+
+### Variables originales y variables derivadas
+
+| Variable original | Archivo | Uso en el proyecto |
+|---|---|---|
+| `Viaje_Id` | viajes | Eliminación de duplicados. |
+| `Inicio_del_viaje`, `Fin_del_viaje` | viajes | Hora de salida y de llegada; se convierten a un formato de fecha uniforme. |
+| `Origen_Id`, `Destino_Id` | viajes | Estación de salida y de llegada; se cruzan con el catálogo. |
+| `id`, `name` | nomenclatura | Identificador y nombre (el prefijo indica el municipio, p. ej. `GDL-001`). |
+| `latitude`, `longitude` | nomenclatura | Proyección de los grupos de P3 en el mapa; no entran al algoritmo. |
+| `dpcapacity` | nomenclatura | Capacidad de anclajes; define el umbral de riesgo de P2 y la rotación por anclaje de P3. |
+
+Las variables derivadas se implementan como funciones documentadas en
+[`mibici/features.py`](mibici/features.py): salidas y llegadas por estación y periodo, hora del
+día, día de la semana y fin de semana, la etiqueta de riesgo de P2 y el perfil de uso de cada
+estación para P3 (proporción de movimientos por periodo del día y en días laborales, uso
+diario por anclaje en escala logarítmica y balances de mañana y tarde, calculados solo con el
+periodo de entrenamiento). Los rezagos de 1 h, 24 h y 7 días y los promedios móviles que usarán
+los candidatos se agregarán al mismo módulo. El catálogo y su justificación están en la
+[sección 5 de la propuesta](docs/entregas/entrega01/secciones/05-pipeline.md).
+
+### Condiciones de uso y datos personales
+
+El portal no publica una licencia explícita. El Reglamento Interno en materia de Transparencia
+de la AMIM establece que la Agencia gestiona su información bajo una política de datos
+abiertos y que esta es pública y de libre acceso, salvo la reservada o confidencial. Con base
+en ello, los datos se usan **solo con fines académicos**, no se redistribuyen (ningún archivo
+de MiBici entra al repositorio) y no se usan para identificar personas.
+
+Las columnas `Usuario_Id`, `Genero` y `Año_de_nacimiento` son datos personales que, combinados
+con horarios y estaciones, podrían identificar a una persona. Ninguna pregunta las necesita, así
+que **la ingesta las descarta** antes de escribir el Parquet limpio: ninguna tabla, modelo,
+artefacto ni *run* de MLflow posterior las contiene.
+
+### Estrategia de partición
+
+La partición es **cronológica, nunca aleatoria**, porque los datos son series de tiempo:
+entrenamiento de septiembre de 2024 a febrero de 2026 (18 meses), validación de marzo a mayo de
+2026 y prueba de junio a agosto de 2026. Las fechas de corte (`TRAIN_START`, `VALIDATION_START`,
+`TEST_START` y `DATA_END`) se definen una sola vez en `config.py` y `split_by_date` las aplica a
+las tres preguntas. Para evitar fuga de información del futuro:
+
+- Toda variable histórica se calcula solo con datos cerrados antes del momento de la
+  predicción: en P1 hasta el cierre del día anterior, en P2 hasta el cierre del intervalo
+  anterior y en P3 solo con el periodo de entrenamiento.
+- Los escaladores y demás transformaciones se ajustan únicamente con el conjunto de
+  entrenamiento, dentro de un `Pipeline` de scikit-learn, y se aplican sin recalcular a
+  validación y prueba.
+
+### Versionado de los datos
+
+El repositorio no puede contener ningún byte de MiBici, así que lo que se versiona es una
+**descripción suficiente para reconstruir y verificar los datos**: el manifiesto
+[`data_manifest.json`](data_manifest.json), que escribe la ingesta en la raíz del repositorio.
+Contiene la versión de datos, la fecha de generación, el rango de meses, el número de viajes
+limpios y de estaciones, el hash SHA-256 de cada uno de los 25 archivos crudos y el de los dos
+Parquet procesados. La versión (`1c3d603c990c`) son los primeros 12 caracteres del SHA-256 de
+los hashes de los Parquet: depende solo del contenido, así que dos integrantes con los mismos
+archivos obtienen la misma versión, y un archivo republicado por el portal o un cambio en las
+reglas de limpieza producen una versión distinta que `git diff` muestra antes de entrar a
+`main` por *Pull Request*, igual que un *lockfile*. Cada *run* de MLflow registra la versión
+como el parámetro `version_datos`.
+
+## Arquitectura y pipeline
+
+![Arquitectura del sistema](references/arquitectura.png)
+
+Los nodos azules se versionan en Git, los cilindros naranjas son almacenamiento local fuera de
+Git y el cilindro verde punteado es el servidor de MLflow en Azure planeado para la siguiente
+entrega. Fuente del diagrama: [`references/arquitectura.mmd`](references/arquitectura.mmd).
+
+| # | Componente | Herramienta | Por qué |
+|---|---|---|---|
+| 1 | Fuentes de datos | Portal de MiBici; enlaces descubiertos con `requests` y BeautifulSoup | Única fuente oficial; el portal asigna los identificadores de las URL. |
+| 2 | Configuración y versión de datos | `config.py` y `data_manifest.json` en Git | Una sola fuente de rutas, fechas, semillas y parámetros; manifiesto con hashes para reconstruir los datos sin almacén remoto. |
+| 3 | Ingesta | `dataset.py` con Typer, pandas, pyarrow, hashlib y loguru | Comando sin pasos manuales; Parquet reduce la lectura de los 24 meses de 135 s a 1.4 s. |
+| 4 | Almacenamiento | `data/raw`, `data/processed`, `models/`, `mlflow.db` y `mlartifacts/` (locales, fuera de Git) | Los datos caben en memoria; se reconstruyen en cualquier máquina con el comando de ingesta. Las tablas de modelado se construyen en memoria al entrenar. |
+| 5 | *Feature engineering* | Funciones en `features.py` con contrato de datos en `config.py`; `Pipeline` de scikit-learn | Evita fugas temporales y *train-serving skew*; código modular y comprobable. |
+| 6 | Entrenamiento | `modeling/train.py` y `modeling/baselines.py` con scikit-learn | Cubre *baselines*, candidatos y métricas; partición cronológica. |
+| 7 | Registro de experimentos | MLflow Tracking local (`mlflow.db` y `mlartifacts/`); servidor en Azure planeado | Herramienta del curso; registra parámetros, métricas, etiquetas y artefactos. |
+| — | Orquestación | `Makefile` (`data`, `train`) | Un grafo de dos pasos no justifica un orquestador. |
+
+El *pipeline* por pregunta y la justificación de cada herramienta con las lecturas del curso
+están en las secciones [5](docs/entregas/entrega01/secciones/05-pipeline.md) y
+[7](docs/entregas/entrega01/secciones/07-arquitectura.md) de la propuesta.
 
 ## Instalación
 
-<!-- TODO: versión de Python, creación del entorno e instalación de dependencias desde un
-     clon limpio. -->
+Requisitos: **Python 3.10 o superior**, Git y `make` (en Windows viene con Git Bash o se
+instala con `winget install GnuWin32.Make`; sin `make`, cada regla del `Makefile` se puede
+ejecutar con el comando de Python que indica).
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/WillSagzz/TC5061-Proyecto-Equipo10.git
+cd TC5061-Proyecto-Equipo10
+
+# 2. Crear y activar un entorno virtual
+python -m venv .venv
+source .venv/bin/activate          # macOS / Linux
+# .venv\Scripts\activate           # Windows
+
+# 3. Instalar las dependencias con versión fija y el paquete `mibici` en modo editable
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
+`pip install -e .` registra el paquete `mibici` en el entorno, de modo que `python -m
+mibici.dataset` y los imports `from mibici.config import ...` funcionan desde cualquier
+carpeta. No se instala nada fuera de [`requirements.txt`](requirements.txt).
+
+MLflow lee `MLFLOW_TRACKING_URI` de un archivo `.env` opcional (con `python-dotenv`). Sin
+`.env`, escribe en la base local `mlflow.db` (SQLite) con los artefactos en `mlartifacts/`, y no
+se necesita ninguna credencial. `.env` está excluido de Git; en el repositorio solo entra un
+[`.env.example`](.env.example) con los nombres de las variables.
 
 ## Comandos
 
-<!-- TODO: comando de ingesta reproducible y comando del experimento base en MLflow. -->
+Todos se ejecutan desde la raíz del repositorio con el entorno activado y sin pasos manuales.
+Las rutas, fechas y semillas salen de `config.py`.
+
+| Comando | Equivalente en Python | Qué hace |
+|---|---|---|
+| `make data` | `python -m mibici.dataset` | **Ingesta reproducible.** Lee la página de datos abiertos, descubre los enlaces de los meses del periodo y del catálogo, descarga a `data/raw/` lo que no esté ya descargado, detecta la codificación, normaliza nombres de columna y fechas, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y regenera `data_manifest.json` con el hash SHA-256 de cada archivo y la versión de datos. |
+| `make train` | `python -m mibici.modeling.train all` (o `p1`, `p2`, `p3` para una sola pregunta) | **Experimento base.** Construye en memoria las tablas de P1, P2 y P3, entrena el *baseline* de cada pregunta con partición cronológica, lo evalúa, guarda el modelo en `models/` y registra el *run* en MLflow. |
+| `mlflow ui --backend-store-uri sqlite:///mlflow.db` | — | Abre la interfaz de MLflow en <http://127.0.0.1:5000> sobre la base local. |
+| `make lint` / `make format` | `ruff format --check && ruff check` / `ruff check --fix && ruff format` | Verifica o corrige el estilo del código. |
+| `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
+
+## Experimento base en MLflow
+
+El experimento se ejecuta desde el código del repositorio (`train.py`), nunca solo desde un
+*notebook*:
+
+- **Un experimento por proyecto:** `mibici-equipo10` (`MLFLOW_EXPERIMENT_NAME` en `config.py`).
+- **Un *run* por pregunta con nombre descriptivo** `P{n}-{etapa}-{modelo}`:
+  `P1-baseline-dummy-estacion-hora`, `P2-baseline-dummy-estacion-intervalo-tipo-dia` y
+  `P3-baseline-kmeans-k4`.
+- **Parámetros para reproducir el *run*:** `version_datos`, `inicio_entrenamiento`,
+  `inicio_validacion`, `inicio_prueba`, `fin_datos`, `semilla`, modelo e hiperparámetros, número
+  de filas de cada conjunto y de grupos.
+- **Métricas con el conjunto como prefijo:** `train_`, `val_` y `test_` de `mae` y `rmse` (P1);
+  `recall`, `precision` y `avg_precision` de las clases `vaciarse` y `llenarse` y `f1_macro`
+  (P2); `train_silhouette` y `train_davies_bouldin`, más sus curvas por `k` (P3).
+- **Etiquetas:** `equipo=equipo10`, `pregunta` (`P1`, `P2` o `P3`), `git_commit` con el SHA del
+  commit que lo ejecutó, `git_cambios_sin_commit` y `tipo_modelo` (`baseline` o `candidato`).
+- **Artefactos:** al menos una figura por pregunta (serie real contra predicha en P1, matriz de
+  confusión en P2, mapa de los grupos de estaciones en P3), el modelo serializado y, en P3, las
+  tablas de grupos.
+- **Nunca** credenciales ni datos personales como parámetros, etiquetas o artefactos.
+
+Para reproducirlo desde un clon limpio:
+
+```bash
+make data                                          # descarga, limpia, escribe Parquet y el manifiesto
+make train                                         # construye las tablas y registra los tres baselines
+mlflow ui --backend-store-uri sqlite:///mlflow.db  # revisa los runs en http://127.0.0.1:5000
+```
+
+Las capturas de la interfaz (lista de *runs*, detalle de un *run*, artefacto y comparación)
+se guardan en `docs/entregas/entrega01/figuras/` para el PDF de la propuesta.
 
 ## Estructura del proyecto
 
+Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
+(`ccds`, con `include_code_scaffold = Yes`).
+
 ```
-├── Makefile              <- Comandos de conveniencia: `make data`, `make lint`, `make format`
+├── Makefile              <- Reglas: data, train, lint, format, entrega01
 ├── README.md             <- Este documento
 ├── pyproject.toml        <- Metadatos del paquete `mibici` y configuración de Ruff
-├── requirements.txt      <- Dependencias para reproducir el entorno
+├── requirements.txt      <- Dependencias con versión fija para reproducir el entorno
+├── .gitignore            <- Excluye data/, mlruns/, mlartifacts/, mlflow.db, .env y modelos serializados
+├── .env.example          <- Nombres de las variables de entorno de MLflow (sin valores)
+├── data_manifest.json    <- Versión de datos: SHA-256 de cada CSV y Parquet y conteos; lo escribe `make data`
 │
-├── data                  <- Excluida de Git; la genera el comando de ingesta
-│   ├── external          <- Datos de terceros
-│   ├── interim           <- Datos intermedios ya transformados
-│   ├── processed         <- Conjuntos finales, listos para modelar
-│   └── raw               <- Descarga original e inmutable de MiBici
+├── data                  <- Excluida de Git; la genera `make data`
+│   ├── raw               <- CSV tal como se descargan del portal (inmutables)
+│   ├── processed         <- meses.parquet (viajes limpios, sin datos personales) y nomenclatura.parquet
+│   ├── interim           <- Datos intermedios de la plantilla (sin uso por ahora)
+│   └── external          <- Datos de terceros (sin uso por ahora)
 │
-├── docs                  <- Proyecto mkdocs por defecto de la plantilla
+├── docs
+│   ├── entregas          <- Fuente de los PDF de cada entrega y el compilador `build.py`
+│   │   └── entrega01     <- Propuesta: secciones en Markdown, figuras y capturas de MLflow
+│   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
-├── models                <- Modelos entrenados y serializados; excluidos de Git
+├── models                <- Modelos serializados; excluidos de Git
 │
-├── notebooks             <- Solo exploración. Convención: `1.0-iniciales-descripcion.ipynb`
+├── notebooks             <- Solo exploración: `1.0-gsg-descarga-dataset.ipynb`
 │
-├── references            <- ML Canvas, diagrama de arquitectura y material explicativo
+├── references            <- ML Canvas (html, pdf y png) y diagramas de arquitectura y trazabilidad (mmd y png)
 │
 ├── reports               <- Análisis generados (HTML, PDF, etc.)
 │   └── figures           <- Gráficas y figuras para los reportes
 │
 └── mibici                <- Código fuente del proyecto
-    ├── __init__.py       <- Hace de `mibici` un módulo de Python
-    ├── config.py         <- Rutas, fechas y semillas: la única fuente de configuración
-    ├── dataset.py        <- Ingesta reproducible: descarga, normaliza y guarda en Parquet
-    ├── features.py       <- Funciones reutilizables de feature engineering
-    ├── plots.py          <- Visualizaciones
+    ├── __init__.py       <- Hace de `mibici` un paquete de Python
+    ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
+    ├── dataset.py        <- Ingesta reproducible: descarga, normaliza, limpia, guarda en Parquet y escribe el manifiesto
+    ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
+    ├── plots.py          <- Figuras que se registran como artefactos en MLflow
     └── modeling
         ├── __init__.py
-        ├── predict.py    <- Inferencia con modelos entrenados
-        └── train.py      <- Entrenamiento de modelos
+        ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
+        ├── train.py      <- Entrenamiento y registro de runs en MLflow
+        └── predict.py    <- Inferencia con modelos entrenados
 ```
+
+## Buenas prácticas y dónde se verifican
+
+| Ámbito | Práctica | Cómo la aplica el equipo | Dónde se verifica |
+|---|---|---|---|
+| MLflow Tracking | Un experimento por proyecto y *runs* con nombre descriptivo. | Experimento `mibici-equipo10`; nombres `P{n}-{etapa}-{modelo}` fijados en `train.py`. | Interfaz de MLflow. |
+| MLflow Tracking | Registrar todo lo necesario para reproducir el *run*. | Parámetros `version_datos`, fechas de la partición, `semilla`, modelo e hiperparámetros, tomados de `config.py` y del manifiesto. | Parámetros del *run*. |
+| MLflow Tracking | Ligar cada *run* con el código y la pregunta. | Etiquetas `git_commit`, `pregunta`, `equipo` y `tipo_modelo`. | Etiquetas del *run*. |
+| MLflow Tracking | Métricas con el conjunto en el nombre. | `test_mae`, `test_recall_vaciarse`, `train_silhouette`, etc. | Métricas del *run*. |
+| MLflow Tracking | Sin credenciales ni datos personales. | La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento`; `.env` está fuera de Git. | Interfaz de MLflow y código. |
+| Estructura y código | *Notebooks* solo para exploración, con la convención de la plantilla. | La lógica final vive en `mibici/`; los *notebooks* se nombran `numero.version-iniciales-descripcion.ipynb`. | Carpeta `notebooks/`. |
+| Estructura y código | Configuración en un solo lugar. | Rutas, fechas y cortes, semilla, contrato de datos, reglas de limpieza, umbral e intervalo de P2, periodos y grupos de P3 y nombre del experimento en `config.py`; prohibido repetirlos. | `config.py` y revisión de PR. |
+| Estructura y código | Dependencias con versión fija y entorno reproducible. | `requirements.txt` con `==` en cada paquete; instalación documentada arriba y probada desde un clon limpio en cada PR. | `requirements.txt` y este README. |
+| Datos y Git | Ningún dato de MiBici, modelo, carpeta de MLflow ni credencial en el historial. | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/`, `mlflow.db`, `*.pkl`, `*.joblib`, `*.pickle` y `.env`; el revisor lo comprueba en cada PR. | `.gitignore` e historial. |
+| Datos y Git | Todo cambio entra a `main` por *Pull Request* revisado. | *Ruleset* sobre `main`: PR obligatorio con una aprobación, conversaciones resueltas, solo *squash merge*, sin *force push* ni borrado. | Pestaña de *Pull Requests*. |
 
 ## Flujo de trabajo con Git/GitHub
 
 El equipo trabaja con **[GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow)**:
 una sola rama de larga duración (`main`), ramas de trabajo cortas y todo cambio entra por
-*Pull Request* revisado. No hay rama de integración intermedia.
-
-Los nombres de ramas siguen **[Conventional Branch](https://conventionalbranch.org/)** y los
-mensajes de commit siguen **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)**.
+*Pull Request* revisado. Los nombres de ramas siguen
+**[Conventional Branch](https://conventionalbranch.org/)** y los mensajes de commit,
+**[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)**.
 
 ### 1. Rama principal protegida
 
 `main` siempre debe estar en un estado funcional: cualquier integrante puede clonarla y
-reproducir la ingesta y el experimento base. Por eso **nadie hace `push` directo a `main`**.
+reproducir la ingesta y el experimento base. **Nadie hace `push` directo a `main`.**
 
-`main` está protegida en GitHub con una *classic branch protection rule* (*Settings → Branches*)
-que usa `main` como patrón. La regla tiene activadas estas opciones:
+`main` está protegida con un
+**[ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)**
+de repositorio (*Settings → Rules → Rulesets*) con estas reglas:
 
-- **Require a pull request before merging** — bloquea el `push` directo.
-  - **Require approvals: 1** — otro integrante debe aprobar.
-  - **Dismiss stale pull request approvals when new commits are pushed** — si llegan commits nuevos, la aprobación anterior deja de valer.
-- **Require conversation resolution before merging** — no se mezcla con comentarios abiertos.
-- **Do not allow bypassing the above settings** — la regla aplica también al dueño del repositorio.
-
-Y mantiene desactivadas estas dos:
-
-- **Allow force pushes** — con lo que el historial no puede reescribirse.
-- **Allow deletions** — con lo que la rama no puede borrarse.
+- **Require a pull request before merging**, con **1 aprobación** requerida, aprobaciones que
+  caducan al llegar commits nuevos (*dismiss stale approvals*), **conversaciones resueltas**
+  antes de mezclar y **solo *squash merge***: cada PR entra a `main` como un solo commit cuyo
+  mensaje sigue Conventional Commits y termina con el número del PR.
+- **Block force pushes** — el historial no puede reescribirse.
+- **Restrict deletions** — la rama no puede borrarse.
 
 ### 2. El ciclo de trabajo
 
 ```bash
-# 1. Partir siempre de una main actualizada
-git checkout main
-git pull origin main
-
-# 2. Crear la rama de trabajo
-git checkout -b feature/ingesta-parquet
-
-# 3. Trabajar y commitear en incrementos pequeños
-git add mibici/dataset.py
+git checkout main && git pull origin main          # 1. partir de una main actualizada
+git checkout -b feature/ingesta-parquet            # 2. crear la rama de trabajo
+git add mibici/dataset.py                          # 3. commits pequeños con Conventional Commits
 git commit -m "feat(dataset): normaliza nombres de columnas al leer los CSV"
-
-# 4. Publicar la rama
-git push -u origin feature/ingesta-parquet
-
-# 5. Abrir el Pull Request hacia main desde GitHub y asignar revisor
-
-# 6. Atender los comentarios de la revisión con commits nuevos sobre la misma rama
-
-# 7. Tras la aprobación, hacer merge desde GitHub y borrar la rama remota
-
-# 8. Limpiar en local
-git checkout main
-git pull origin main
+git push -u origin feature/ingesta-parquet         # 4. publicar la rama
+# 5. abrir el Pull Request hacia main en GitHub y asignar revisor
+# 6. atender la revisión con commits nuevos sobre la misma rama
+# 7. tras la aprobación, squash merge desde GitHub y borrar la rama remota
+git checkout main && git pull origin main          # 8. limpiar en local
 git branch -d feature/ingesta-parquet
 ```
 
-### 3. Convención de nombres de ramas
+### 3. Nombres de ramas
 
-Se sigue la especificación **[Conventional Branch](https://conventionalbranch.org/)**.
+**Formato:** `tipo/descripcion`, solo minúsculas, dígitos y guiones; sin guiones bajos,
+espacios ni acentos. La única rama sin prefijo es `main`. Una rama, un propósito; nacen de una
+`main` actualizada y se borran al mezclarse.
 
-**Formato:** `tipo/descripcion`
+| Tipo | Cuándo se usa | Ejemplo |
+|---|---|---|
+| `feature/` (alias `feat/`) | funcionalidad nueva | `feature/ingesta-parquet` |
+| `bugfix/` (alias `fix/`) | corrección de un defecto | `bugfix/encoding-csv-2015` |
+| `hotfix/` | corrección urgente sobre algo ya en `main` | `hotfix/ruta-parquet` |
+| `release/` | preparación de una entrega | `release/v1.0.0` |
+| `chore/` | dependencias, configuración y documentación | `chore/fijar-dependencias` |
+| `docs/` | documentación extensa (entregas, README, referencias) | `docs/entrega01-arquitectura` |
+| `ai/`, `claude/`, `codex/`, `copilot/`, `cursor/` | ramas generadas por un agente de IA | `claude/readme` |
 
-La única rama sin prefijo es `main`.
-
-#### Tipos permitidos
-
-| Tipo | Cuándo se usa |
-|---|---|
-| `feature/` (alias `feat/`) | funcionalidad nueva |
-| `bugfix/` (alias `fix/`) | corrección de un defecto |
-| `hotfix/` | corrección urgente sobre algo ya en `main` |
-| `release/` | preparación de una entrega |
-| `chore/` | tareas que no son código: dependencias, configuración y **documentación** |
-| `ai/`, `claude/`, `codex/`, `copilot/`, `cursor/` | ramas generadas por un agente de IA |
-
-#### Reglas de escritura
-
-1. **Solo minúsculas, dígitos y guiones.** Los puntos se permiten en la descripción, normalmente para versiones.
-2. **Sin guiones bajos, espacios, acentos ni caracteres especiales.**
-3. **Sin separadores consecutivos** ni al inicio o al final, y un guion nunca va pegado a un punto.
-4. **Descriptiva pero breve:** el nombre debe decir el propósito del trabajo.
-5. **Incluye el número de issue** cuando exista: `feature/issue-123-nueva-ingesta`.
-
-#### Ejemplos
+**Reglas de escritura:** solo minúsculas, dígitos y guiones (los puntos se permiten en la
+descripción para versiones); sin separadores consecutivos ni al inicio o al final, y un guion
+nunca va pegado a un punto; descriptiva pero breve, e incluye el número de issue cuando exista
+(`feature/issue-123-nueva-ingesta`).
 
 | Válida | Inválida | Por qué falla |
 |---|---|---|
 | `feature/ingesta-parquet` | `Feature/Ingesta-Parquet` | mayúsculas |
 | `bugfix/encoding-csv-2015` | `fix/encoding csv` | espacio |
-| `chore/readme-flujo-trabajo` | `docs/readme_flujo` | tipo no definido y guion bajo |
+| `chore/readme-flujo-trabajo` | `readme_flujo` | sin tipo y con guion bajo |
 | `chore/fijar-dependencias` | `chore/fijar--dependencias` | guiones consecutivos |
 | `release/v1.0.0` | `release/v1.-0.0` | guion pegado a un punto |
 
-**Reglas de ciclo de vida:**
+### 4. Mensajes de commit
 
-- **Una rama, un propósito.** Si el cambio necesita dos títulos para describirse, son dos ramas.
-- **Ramas cortas.** Nacen de una `main` actualizada y se borran al mezclarse. Mientras más viva una rama, más caro es el merge.
-
-### 4. Convención de mensajes de commit
-
-Se sigue **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)**.
-
-**Estructura:**
-
-```
-tipo(ámbito opcional): descripción
-
-[cuerpo opcional]
-
-[pies de página opcionales]
-```
-
-El cuerpo, si existe, empieza una línea en blanco después de la descripción; los pies de
-página, una línea en blanco después del cuerpo.
-
-#### Tipos
+**Estructura:** `tipo(ámbito): descripción`, con cuerpo y pies de página opcionales separados
+por una línea en blanco. La descripción va en imperativo ("agrega", no "agregado"), en
+minúsculas y sin punto final. Un commit = un cambio coherente. Nunca incluir credenciales,
+rutas absolutas ni datos personales.
 
 | Tipo | Cuándo se usa |
 |---|---|
@@ -201,107 +405,64 @@ página, una línea en blanco después del cuerpo.
 | `perf` | mejora de rendimiento |
 | `build` | dependencias y empaquetado |
 | `ci` | integración continua |
-| `chore` | mantenimiento y tareas que no tocan el código fuente |
+| `chore` | mantenimiento que no toca el código fuente |
 | `revert` | revierte un commit anterior, citando su SHA en el pie |
 
-La especificación solo obliga a `feat` y `fix`; el resto son los tipos que recomienda
-`@commitlint/config-conventional`, citado por la propia especificación.
-
-El **ámbito** es un sustantivo entre paréntesis que nombra la parte del código afectada.
 Ámbitos del proyecto: `dataset`, `features`, `config`, `modeling`, `mlflow`, `notebooks`,
-`readme`, `deps`.
-
-#### Ejemplos
+`readme`, `entregas`, `references`, `deps`.
 
 ```
 feat(dataset): descarga los CSV mensuales y los guarda en Parquet
 fix(features): evita usar información posterior al momento de la predicción
-feat(mlflow): registra el baseline de P1 con sus parámetros y métricas
-docs(readme): documenta el flujo de trabajo con Git/GitHub
 chore(deps): fija las versiones de scikit-learn y mlflow
-```
-
-#### Cambios que rompen compatibilidad
-
-Se marcan de dos formas, y el `!` puede acompañar a cualquier tipo:
-
-```
 feat(dataset)!: cambia el esquema del Parquet de salida
 ```
 
-```
-refactor(config): unifica las rutas del proyecto
-
-BREAKING CHANGE: RAW_DATA_DIR se renombra a RAW_DIR; actualiza tus notebooks.
-```
-
-`BREAKING CHANGE` va siempre en mayúsculas.
-
-#### Reglas de escritura
-
-- Descripción en **imperativo** ("agrega", no "agregado" ni "agregando"), en minúsculas y sin punto final.
-- Un commit = un cambio coherente. Nada de `varios cambios` ni `wip`.
-- **Nunca** incluir credenciales, rutas absolutas ni datos personales en el mensaje.
+Un cambio que rompe compatibilidad se marca con `!` tras el tipo o con un pie
+`BREAKING CHANGE: ...` en mayúsculas.
 
 ### 5. Pull Requests y revisiones
 
-Todo cambio a `main` entra por PR. Ningún PR se mezcla sin la aprobación de otro integrante.
-
-**Título del PR:** mismo formato que un commit — `tipo(ámbito): descripción`.
-
-**Descripción del PR:**
-
-```markdown
-## Qué cambia
-Resumen en una o dos frases.
-
-## Por qué
-Qué problema resuelve o qué motiva el cambio.
-
-## Cómo probarlo
-Comandos o pasos para verificar el cambio desde un clon limpio.
-
-## Pendientes
-Lo que queda fuera de este PR, si aplica.
-```
+Todo cambio a `main` entra por PR y ningún PR se mezcla sin la aprobación de otro integrante.
+El título del PR sigue el formato de un commit (`tipo(ámbito): descripción`), porque con el
+*squash merge* se convierte en el mensaje del commit que llega a `main`. La descripción
+responde qué cambia, por qué y cómo probarlo desde un clon limpio.
 
 **Qué revisa quien aprueba:**
 
-- El código corre desde un clon limpio siguiendo el README.
-- `make lint` pasa sin errores.
-- No se versionan datos de MiBici, `mlruns/`, modelos ni credenciales.
+- El código corre desde un clon limpio siguiendo el README y `make lint` pasa.
+- No se versionan datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, modelos ni credenciales.
 - Las rutas, fechas y semillas viven en `config.py`, no repetidas en varios archivos.
 - Las funciones nuevas de `features.py` tienen *docstring* y no usan información del futuro.
 - El nombre de la rama y los mensajes de commit siguen las convenciones.
 
+**Evidencia de colaboración.** Cada integrante ha abierto al menos un *Pull Request* y
+revisado al menos uno de otro integrante; la evidencia está en la
+[pestaña de *Pull Requests*](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pulls?q=is%3Apr)
+del repositorio.
+
 ### 6. Qué nunca entra al repositorio
 
 Se versiona el **código que produce** los datos, los experimentos y los modelos; nunca el
-**resultado de ejecutarlo**. Lo siguiente está excluido en el [`.gitignore`](.gitignore):
+**resultado de ejecutarlo**. El [`.gitignore`](.gitignore) excluye:
 
 | Excluido | Motivo |
 |---|---|
-| `data/` | los datos de MiBici se reconstruyen con el comando de ingesta |
-| `mlruns/`, `mlartifacts/` | son la salida de correr un experimento; MLflow los guarda localmente y cada *run* lleva como etiqueta el commit que lo produjo, así que el código de ese commit basta para reproducirlo |
-| `*.pkl`, `*.joblib` y otros modelos serializados | se regeneran ejecutando el código de entrenamiento |
+| `data/` | los datos de MiBici se reconstruyen con `make data`; `data_manifest.json` permite verificar que son los mismos |
+| `mlflow.db`, `mlartifacts/`, `mlruns/` | salida de los experimentos; cada *run* lleva el commit y la versión de datos con que se reproduce |
+| `*.pkl`, `*.pickle`, `*.joblib` | modelos serializados; se regeneran con `make train` |
 | `.env` y cualquier credencial | nunca deben salir del equipo local |
+| `docs/entregas/**/build/` | salidas compiladas de las entregas; se regeneran con `make entrega01` |
 
 Si algo de esto llega a `main`, borrarlo en un commit posterior **no** lo quita del historial:
 avisa al equipo antes de reescribir nada.
-
-### Referencias del flujo de trabajo
-
-- [Conventional Branch](https://conventionalbranch.org/) — especificación de nombres de ramas.
-- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) — especificación de mensajes de commit.
-- [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow) — modelo de ramificación.
-- [About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) — configuración de la rama principal.
-- [About pull request reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews) — revisiones.
 
 ## Convenciones de código
 
 El código sigue **[PEP 8](https://peps.python.org/pep-0008/)**, verificado automáticamente con
 **[Ruff](https://docs.astral.sh/ruff/)**, que ya viene configurado en
-[`pyproject.toml`](pyproject.toml). La versión de Python del proyecto es **3.10**.
+[`pyproject.toml`](pyproject.toml). El proyecto requiere **Python 3.10 o superior**
+(`requires-python` en `pyproject.toml`).
 
 ### 1. Formateo automático
 
@@ -440,25 +601,24 @@ Los notebooks son **solo para exploración**; la lógica final vive en el módul
 numero.version-iniciales-descripcion-corta.ipynb
 ```
 
-Por ejemplo, `1.0-gsg-exploracion-viajes.ipynb`. Antes de hacer commit de un notebook,
+Por ejemplo, `1.0-gsg-exploracion-descarga.ipynb`. Antes de hacer commit de un notebook,
 limpia sus salidas para que el *diff* sea legible.
-
-### Referencias de estilo
-
-- [PEP 8 — Style Guide for Python Code](https://peps.python.org/pep-0008/)
-- [PEP 257 — Docstring Conventions](https://peps.python.org/pep-0257/)
-- [PEP 484 — Type Hints](https://peps.python.org/pep-0484/)
-- [Ruff — formateador y linter](https://docs.astral.sh/ruff/)
-- [Google Python Style Guide — docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
 
 ## Integrantes y roles
 
-| Integrante | Matrícula | Rol | Usuario de GitHub |
+Los roles siguen los perfiles de un equipo de MLOps que describen Treveil et al. (2020,
+cap. 2, "People of MLOps"): *subject matter experts*, *data scientists*, *data engineers*,
+*software engineers*, *DevOps*, *model risk managers* y *machine learning architects*. En un
+equipo de cuatro personas cada integrante es el responsable principal de uno de esos roles,
+pero todos participan en las decisiones de la propuesta, abren *Pull Requests* y revisan los
+de los demás.
+
+| Integrante | Matrícula | Usuario de GitHub | Rol |
 |---|---|---|---|
-| Mariely Toribio Rodríguez | A01797848 | TBD | <!-- TODO --> |
-| Alan Augusto Herrera Sánchez | A01338336 | TBD | <!-- TODO --> |
-| Guillermo Sáenz González | A00823049 | TBD | WillSagzz |
-| Victor Yoguel Salazar Alanis | A01797950 | TBD | CFOP2357 |
+| Mariely Toribio Rodríguez | A01797848 | [a01797848](https://github.com/a01797848) | **Data Scientist** |
+| Guillermo Sáenz González | A00823049 | [WillSagzz](https://github.com/WillSagzz) | **Data Engineer** |
+| Victor Yoguel Salazar Alanis | A01797950 | [CFOP2357](https://github.com/CFOP2357) | **Machine Learning Architect** |
+| Alan Augusto Herrera Sánchez | A01338336 | [alanhsa9](https://github.com/alanhsa9) | **Subject Matter Expert** |
 
 **Declaración de uso de IA.** El equipo usó asistentes de IA para edición de código y gestión
 del repositorio bajo un esquema *human-in-the-loop*: las decisiones fueron dirigidas, revisadas
@@ -466,3 +626,14 @@ y aprobadas por los autores.
 
 - Anthropic. (2026). *Claude Code (Claude Opus 5 y Claude Fable 5.1)* [Modelo de lenguaje grande]. https://claude.com/claude-code
 - OpenAI. (2026). *ChatGPT* [Modelo de lenguaje grande]. https://chatgpt.com
+
+## Referencias
+
+- Cookiecutter Data Science. (s.f.). *Cookiecutter Data Science* [Plantilla de proyecto]. DrivenData. https://cookiecutter-data-science.drivendata.org/
+- Dorard, L. (2018, 9 de marzo). *From data to AI with the Machine Learning Canvas (Part I)*. Own Machine Learning (Medium). https://medium.com/louis-dorard/from-data-to-ai-with-the-machine-learning-canvas-part-i-d171b867b047
+- Huyen, C. (2022). *Designing machine learning systems: An iterative process for production-ready applications*. O'Reilly Media.
+- MiBici. (s.f.). *Datos abiertos* [Conjunto de datos]. Sistema de Bicicleta Pública del Área Metropolitana de Guadalajara. https://mibici.net/es/datos-abiertos/
+- MLflow. (s.f.). *MLflow Tracking* [Documentación]. https://mlflow.org/docs/latest/ml/tracking/
+- scikit-learn developers. (s.f.). *Metrics and scoring: quantifying the quality of predictions* [Documentación]. https://scikit-learn.org/stable/modules/model_evaluation.html
+- Treveil, M., Omont, N., Stenac, C., Lefevre, K., Phan, D., Zentici, J., Lavoillotte, A., Miyazaki, M., & Heidmann, L. (2020). *Introducing MLOps: How to scale machine learning in the enterprise*. O'Reilly Media.
+- Wilson, B. (2022). *Machine Learning Engineering in Action*. Manning Publications.
