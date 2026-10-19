@@ -63,6 +63,12 @@ data: requirements
 	$(PYTHON_INTERPRETER) mibici/dataset.py
 
 
+## Train the baselines of P1, P2 and P3 and log them to MLflow
+.PHONY: train
+train:
+	$(PYTHON_INTERPRETER) -m mibici.modeling.train all
+
+
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01
 entrega01:
