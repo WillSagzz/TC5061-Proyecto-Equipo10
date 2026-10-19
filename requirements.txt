@@ -1,0 +1,25 @@
+# Instala el módulo del proyecto en modo editable (pyproject.toml)
+-e .
+
+# Ingesta
+requests==2.32.5
+beautifulsoup4==4.13.5
+pandas==2.2.3
+numpy==2.2.6
+pyarrow==21.0.0
+
+# Modelado y experimentos
+scikit-learn==1.7.2
+joblib==1.5.2
+matplotlib==3.10.6
+mlflow==3.4.0
+# Base de datos local de MLflow (mlflow.db): versiones fijas para que mlflow abra la base
+sqlalchemy==2.0.55
+alembic==1.20.0
+
+# Utilidades de la plantilla
+python-dotenv==1.1.1
+loguru==0.7.3
+tqdm==4.67.1
+typer==0.19.2
+ruff==0.16.8
