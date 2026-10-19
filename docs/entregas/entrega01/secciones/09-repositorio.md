@@ -48,7 +48,7 @@ La Tabla 15 recorre las prácticas obligatorias de la actividad e indica cómo l
 | Estructura y código | Configuración en un solo lugar | Rutas (`pathlib`), fechas del periodo y de corte, semilla, umbral e intervalo de P2 y nombre del experimento, todos en `config.py` | `mibici/config.py` |
 | Estructura y código | Dependencias con versión fija y entorno reproducible | `requirements.txt` con versiones fijadas; Python 3.10; instalación documentada en el README desde un clon limpio | `requirements.txt` y README |
 | Datos y Git | Ningún dato, modelo, carpeta de MLflow ni credencial en el historial | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/`, `*.pkl`, `*.joblib` y `.env`; la revisión de cada PR lo comprueba | `.gitignore` e historial |
-| Datos y Git | Todo cambio entra a la rama principal por *Pull Request* revisado | Regla de protección de `main` que exige PR con una aprobación; siete PR mezclados a la fecha, todos revisados por otro integrante (Tabla 16) | Pestaña de *Pull Requests* |
+| Datos y Git | Todo cambio entra a la rama principal por *Pull Request* revisado | Regla de protección de `main` que exige PR con una aprobación; todos los PR mezclados han sido revisados por otro integrante | Pestaña de *Pull Requests* |
 
 ## Flujo de trabajo con Git/GitHub
 
@@ -58,25 +58,13 @@ El equipo sigue GitHub Flow (GitHub, s.f.-b): `main` es la única rama de larga 
 - **Convención de nombres de ramas.** Conventional Branch (Conventional Branch, s.f.): `tipo/descripcion` en minúsculas y con guiones, con los tipos `feature/`, `bugfix/`, `hotfix/`, `release/` y `chore/`; por ejemplo, `feature/download-dataset` o `chore/entrega01-propuesta-pdf`.
 - **Convención de mensajes de commit.** Conventional Commits 1.0.0 (Conventional Commits, s.f.): `tipo(ámbito): descripción` en imperativo, con los ámbitos `dataset`, `features`, `config`, `modeling`, `mlflow`, `notebooks`, `readme` y `deps`; por ejemplo, `docs(entregas): redacta la sección de arquitectura de la entrega 01`. Los cambios incompatibles se marcan con `!`.
 - **Pull Requests y revisiones.** El título del PR sigue el formato de los *commits* y la descripción indica qué cambia, por qué y cómo probarlo desde un clon limpio. Quien revisa (GitHub, s.f.-c) comprueba que el código corre siguiendo el README, que `make lint` pasa, que no se versionan datos ni credenciales, que la configuración sigue centralizada en `config.py` y que las funciones nuevas de `features.py` tienen *docstring* y no usan información del futuro.
-- **Evidencia de colaboración.** A la fecha de esta entrega, los cuatro integrantes han abierto al menos un *Pull Request* y han revisado y aprobado al menos uno de otro integrante (Tabla 16), y los cuatro tienen *commits* en el historial de `main`.
-
-**Tabla 16.** *Pull Requests* mezclados a `main` a la fecha de la entrega.
-
-| PR | Título | Rama | Autor | Revisor |
-|----|--------|------|-------|---------|
-| #1 | docs(readme): documenta el flujo de trabajo con Git/GitHub y las convenciones de código | `chore/readme-flujo-trabajo` | Victor Yoguel Salazar Alanis | Alan Augusto Herrera Sánchez |
-| #2 | docs(entregas): migrar la propuesta de la entrega 01 de word a markdown | `chore/entrega01-propuesta-pdf` | Victor Yoguel Salazar Alanis | Guillermo Sáenz González |
-| #3 | docs(references): agregar ml canvas del proyecto mibici | `docs/ml-canvas` | Alan Augusto Herrera Sánchez | Guillermo Sáenz González |
-| #4 | feature(dataset): agregar script para extraccion y transformacion inicial de datos | `feature/download-dataset` | Guillermo Sáenz González | Mariely Toribio Rodríguez |
-| #5 | docs: actualiza secciones de la entrega 01 y unifica P2 en tres clases | `chore/actualiza-secciones-entrega01` | Mariely Toribio Rodríguez | Victor Yoguel Salazar Alanis |
-| #6 | refactor!: renombra el paquete feature_engineering a mibici | `fix/folder-naming` | Victor Yoguel Salazar Alanis | Guillermo Sáenz González |
-| #7 | docs(entregas): redacta la sección de arquitectura de la entrega 01 | `docs/entrega01-arquitectura` | Victor Yoguel Salazar Alanis | Guillermo Sáenz González |
+- **Evidencia de colaboración.** Los cuatro integrantes han abierto al menos un *Pull Request*, han revisado y aprobado al menos uno de otro integrante y tienen *commits* en el historial de `main`. La evidencia vive en la pestaña de *Pull Requests* del repositorio (<https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pulls?q=is%3Apr>), que se mantiene actualizada conforme avanza el proyecto.
 
 ## Integrantes y roles
 
 Todos los integrantes participan en la propuesta, revisan los *Pull Requests* de los demás y contribuyen código y documentación; el rol indica el frente del que cada uno es responsable principal.
 
-**Tabla 17.** Integrantes del equipo y roles.
+**Tabla 16.** Integrantes del equipo y roles.
 
 | Integrante | Matrícula | Usuario de GitHub | Rol principal |
 |------------|-----------|-------------------|---------------|
