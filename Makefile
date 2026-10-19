@@ -59,8 +59,8 @@ create_environment:
 
 ## Make dataset
 .PHONY: data
-data: requirements
-	$(PYTHON_INTERPRETER) mibici/dataset.py
+data:
+	$(PYTHON_INTERPRETER) -m mibici.dataset
 
 
 ## Train the baselines of P1, P2 and P3 and log them to MLflow
