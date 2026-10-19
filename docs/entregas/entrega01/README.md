@@ -33,7 +33,8 @@ Los diagramas se escriben en Mermaid (`references/arquitectura.mmd`, `references
 exportan a PNG con mermaid-cli, sin instalar nada de forma permanente (requiere Node y Microsoft Edge o Chrome):
 
 ```bash
-npx -y -p @mermaid-js/mermaid-cli mmdc -i references/arquitectura.mmd -o references/arquitectura.png -b white -s 2 \n    -c docs/entregas/mermaid-config.json -p docs/entregas/puppeteer-config.json
+npx -y -p @mermaid-js/mermaid-cli mmdc -i references/arquitectura.mmd -o references/arquitectura.png -b white -s 2 \
+    -c docs/entregas/mermaid-config.json -p docs/entregas/puppeteer-config.json
 ```
 
 Si el archivo `.mmd` cambia, vuelve a exportar el PNG en el mismo commit para que ambos coincidan.
@@ -87,5 +88,5 @@ necesita conexión a internet.
 - [ ] `references/ml_canvas.png` corresponde a `ml_canvas.html`, y `references/arquitectura.png` y `references/trazabilidad.png` corresponden a sus `.mmd`.
 - [ ] La sección 7 y la 8 describen los comandos, archivos y parámetros que existen en el código (`make data`, `make train`, `data_manifest.json`, `mlflow.db`).
 - [ ] La definición de P2 (clases, granularidad y horizonte) es la misma en todas las secciones y en `config.py`.
-- [ ] La Tabla 15 de la sección 9 incluye todos los PR mezclados hasta el momento de la entrega.
+- [ ] El *commit* y la versión de datos que indica la sección 8 coinciden con las etiquetas y parámetros que muestran las capturas de MLflow.
 - [ ] El PDF generado se llama `TC5061_Propuesta_Proyecto_Equipo10.pdf`.

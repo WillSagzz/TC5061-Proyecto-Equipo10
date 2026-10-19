@@ -45,7 +45,7 @@ python -m mibici.modeling.train p2
 python -m mibici.modeling.train p3
 ```
 
-Sin un archivo `.env`, MLflow escribe en la base local `mlflow.db` y guarda los artefactos en `mlartifacts/`, ambos excluidos de Git; con `MLFLOW_TRACKING_URI` definido, los mismos comandos registran en el servidor compartido del equipo (sección 7, Tabla 10). En esta entrega todos los *runs* se ejecutaron en modo local, con el *commit* `00fc184` y la versión de datos `1c3d603c990c`.
+Sin un archivo `.env`, MLflow escribe en la base local `mlflow.db` y guarda los artefactos en `mlartifacts/`, ambos excluidos de Git; con `MLFLOW_TRACKING_URI` definido, los mismos comandos registran en el servidor compartido del equipo (sección 7, Tabla 10). En esta entrega todos los *runs* se ejecutaron en modo local con la versión de datos `1c3d603c990c`, sobre el *commit* `00fc184` de `main` y con el código de entrenamiento todavía en la rama del *Pull Request* #10, por lo que la etiqueta `git_cambios_sin_commit` vale `True` en las capturas; ese código es el que entró a `main` con dicho *Pull Request* (*commit* `04a94ef`), con el que se reproducen los *runs*.
 
 ## Resultados del experimento base
 

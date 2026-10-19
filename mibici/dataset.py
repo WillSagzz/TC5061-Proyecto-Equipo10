@@ -1,7 +1,18 @@
+"""Ingesta reproducible de los datos abiertos de MiBici.
+
+Uso desde la raíz del repositorio (``make data``):
+
+    python -m mibici.dataset
+
+Descubre los enlaces del periodo en el portal, descarga a ``data/raw/`` lo que falte, normaliza
+y limpia los viajes, escribe los Parquet de ``data/processed/`` y regenera ``data_manifest.json``
+con el hash SHA-256 de cada archivo y la versión de datos. Rutas, fechas y reglas de limpieza
+salen de ``config.py``.
+"""
+
 import datetime
 import hashlib
 import json
-import os
 from pathlib import Path
 import time
 import unicodedata
@@ -34,18 +45,41 @@ app = typer.Typer()
 
 
 # MARK: Fetch URL
-# (Website or File)
-def get_url(url: str):
+def get_url(url: str) -> requests.Response:
+    """Descarga una URL del portal (página o archivo) con un agente de navegador.
+
+    Args:
+        url: Dirección completa de la página o del archivo.
+
+    Returns:
+        Respuesta HTTP con el contenido.
+
+    Raises:
+        requests.HTTPError: Si el portal responde con error; así no se guarda una página de
+            error como si fuera un CSV.
+    """
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     }
     r = requests.get(url, headers=headers, timeout=120)
-    r.raise_for_status()  # si el portal responde con error, no se guarda una página de error como CSV
+    r.raise_for_status()
     return r
 
 
 # MARK: File paths
-def get_paths(site_html: str):
+def get_paths(site_html: str) -> dict[str, list[str]]:
+    """Extrae de la página de datos abiertos los enlaces a los CSV mensuales y al catálogo.
+
+    Los enlaces llevan un identificador numérico que asigna el portal, por eso se leen de la
+    página en lugar de mantener una lista a mano.
+
+    Args:
+        site_html: HTML de la página de datos abiertos.
+
+    Returns:
+        Diccionario con las rutas relativas de los archivos mensuales (``"Months"``) y de la
+        nomenclatura (``"Nom"``).
+    """
     logger.info("Parsing HTML for file links...")
     soup = BeautifulSoup(site_html, "html.parser")
     links = soup.find_all("a")
@@ -53,9 +87,8 @@ def get_paths(site_html: str):
     parent_dir = "/site/assets/files"
     file_paths = {"Months": [], "Nom": []}
     for link in links:
-        link_href = str(
-            link.get("href")
-        )  # Can work without the str(). Just added it to remove warnings in VS Code.
+        # str() solo para evitar los avisos de tipo del editor; el valor ya es texto
+        link_href = str(link.get("href"))
         if not link_href.startswith(parent_dir):
             continue
         if "datos_abiertos" in link_href:
@@ -69,17 +102,29 @@ def get_paths(site_html: str):
 
 
 # MARK: Filter by date
-def filter_paths(paths: list, start_date: str, end_date: str):
+def filter_paths(paths: list, start_date: str, end_date: str) -> list[str]:
+    """Conserva solo las rutas de los meses dentro del periodo del proyecto.
+
+    El mes se lee del nombre del archivo (``datos_abiertos_AAAA_MM.csv``).
+
+    Args:
+        paths: Rutas de los CSV mensuales.
+        start_date: Primer mes incluido, en formato ``AAAA-MM-DD``.
+        end_date: Último mes incluido, en formato ``AAAA-MM-DD``.
+
+    Returns:
+        Rutas de los meses entre ``start_date`` y ``end_date``, ambos incluidos.
+    """
     logger.info("Filtering by date range...")
     logger.debug(f"Start date: {start_date}")
     logger.debug(f"End date: {end_date}")
 
-    # Path & date dataframe
+    # Tabla ruta-fecha para filtrar con pandas
     df_paths = pandas.DataFrame(paths, columns=["path"])
     df_dates = df_paths.path.str.extract(r"(\d{4}_\d{2})").rename(columns={0: "date"})
     df_paths["date"] = pandas.to_datetime(df_dates["date"], format="%Y_%m")
 
-    # Filter by date
+    # Filtro por fecha
     df_filtered = df_paths.query("(date >= @start_date) and (date <= @end_date)")
     paths_list = df_filtered.path.to_list()
 
@@ -87,15 +132,26 @@ def filter_paths(paths: list, start_date: str, end_date: str):
 
 
 # MARK: Download files
-def download_files(base_url: str, path_list: list, input_path: Path):
-    os.makedirs(input_path, exist_ok=True)  # data/ no está en Git: en un clon limpio no existe
-    existing_filenames = os.listdir(input_path)
+def download_files(base_url: str, path_list: list, input_path: Path) -> None:
+    """Descarga a ``input_path`` los archivos que todavía no estén ahí.
+
+    Los archivos ya descargados no se vuelven a pedir, así la ingesta se puede repetir sin
+    costo y ``data/raw/`` funciona como copia inmutable de la que se calculan los hashes.
+
+    Args:
+        base_url: Dominio del portal.
+        path_list: Rutas relativas de los archivos (las que devuelve ``get_paths``).
+        input_path: Carpeta de destino; se crea si no existe (``data/`` no está en Git).
+    """
+    input_path = Path(input_path)
+    input_path.mkdir(parents=True, exist_ok=True)
+    existing_filenames = {path.name for path in input_path.iterdir()}
 
     for filepath in tqdm(path_list, desc="Downloading files", unit=" files"):
         filename = filepath.split("/")[-1]
-        input_filepath = f"{input_path}/{filename}"
+        input_filepath = input_path / filename
 
-        # If the file has already been downloaded, no need to do so again
+        # Si el archivo ya se descargó, no hace falta repetirlo
         if filename in existing_filenames:
             continue
 
@@ -147,8 +203,28 @@ def parse_dates(col: pandas.Series) -> pandas.Series:
     return pandas.to_datetime(col, format="ISO8601", errors="coerce")
 
 
-def read_raw_data(input_path: Path, file_type: str = "month", allowed_files: list | None = None):
-    filenames = os.listdir(input_path)
+def read_raw_data(
+    input_path: Path, file_type: str = "month", allowed_files: list | None = None
+) -> pandas.DataFrame:
+    """Lee los CSV crudos de ``input_path`` y los concatena en una sola tabla.
+
+    Los archivos se leen en orden alfabético para que el resultado (y por tanto el hash del
+    Parquet y la versión de datos) sea el mismo en cualquier sistema operativo. De los
+    archivos mensuales se conservan solo las columnas del contrato (``TRIP_COLUMNS``), así
+    que los datos personales nunca pasan de aquí.
+
+    Args:
+        input_path: Carpeta con los CSV descargados.
+        file_type: ``"month"`` para los viajes mensuales o ``"nom"`` para la nomenclatura.
+        allowed_files: Si se indica, solo se leen los archivos con estos nombres (los del
+            rango de fechas).
+
+    Returns:
+        Viajes de todos los meses concatenados, o la nomenclatura. Tabla vacía si
+        ``file_type`` no es válido o no hay archivos que leer.
+    """
+    input_path = Path(input_path)
+    filenames = sorted(path.name for path in input_path.iterdir())
     if allowed_files is not None:  # solo los archivos del rango de fechas
         filenames = [f for f in filenames if f in allowed_files]
     if file_type == "month":
@@ -161,7 +237,7 @@ def read_raw_data(input_path: Path, file_type: str = "month", allowed_files: lis
 
     df_list = []
     for filename in filenames:
-        filepath = f"{input_path}/{filename}"
+        filepath = input_path / filename
         df = pandas.read_csv(filepath, encoding=detect_encoding(filepath))
         if file_type == "month":
             # Solo las columnas del contrato: los datos personales nunca se guardan
@@ -170,20 +246,42 @@ def read_raw_data(input_path: Path, file_type: str = "month", allowed_files: lis
             df["fin_del_viaje"] = parse_dates(df["fin_del_viaje"])
         df_list.append(df)
 
+    if not df_list:
+        logger.warning(f"No hay archivos de tipo '{file_type}' en {input_path}")
+        return pandas.DataFrame()
     if file_type == "nom":
-        return df
+        return df_list[0]
     return pandas.concat(df_list, ignore_index=True)
 
 
 # MARK: Normalize column names
-def normalize_text(col: str):
+def normalize_text(col: str) -> str:
+    """Pasa un nombre de columna a minúsculas y sin acentos (``Año_de_nacimiento`` → ``ano_de_nacimiento``).
+
+    Args:
+        col: Nombre original de la columna.
+
+    Returns:
+        Nombre en minúsculas y solo con caracteres ASCII.
+    """
     col_lower = col.lower()
     col_norm = unicodedata.normalize("NFKD", col_lower)
     col_ascii = col_norm.encode("ascii", "ignore").decode("ascii")
     return col_ascii
 
 
-def norm_cols(df):
+def norm_cols(df: pandas.DataFrame) -> pandas.DataFrame:
+    """Normaliza los nombres de todas las columnas con ``normalize_text``.
+
+    Los CSV de MiBici cambian mayúsculas y acentos entre meses; con nombres uniformes se
+    pueden seleccionar las columnas del contrato de ``config.py``.
+
+    Args:
+        df: Tabla recién leída de un CSV.
+
+    Returns:
+        La misma tabla con los nombres de columna normalizados.
+    """
     cols = list(df.columns)
     cols_norm = [normalize_text(col) for col in cols]
     df.columns = cols_norm
@@ -249,39 +347,43 @@ def main(
     input_path: Path = RAW_DATA_DIR,
     start_date: str = START_DATE,
     end_date: str = END_DATE,
-):
+) -> None:
+    """Ejecuta la ingesta completa: descubre, descarga, limpia, guarda en Parquet y versiona.
+
+    Las opciones toman por defecto las rutas y fechas de ``config.py``.
+    """
     logger.info("Fetching dataset...")
     logger.info(f"Input path: {input_path}")
 
-    # Fetch website
+    # Página de datos abiertos
     logger.info("Fetching website...")
     r = get_url(MIBICI_DATA_PAGE)
 
-    # Parse html
+    # Enlaces a los archivos
     file_paths = get_paths(r.text)
 
-    # Filter by date
+    # Solo los meses del periodo, más el catálogo
     paths_list = filter_paths(file_paths["Months"], start_date, end_date)
     paths_list.append(file_paths["Nom"][0])
 
-    # Download files
+    # Descarga de lo que falte
     download_files(MIBICI_BASE_URL, paths_list, input_path)
 
     logger.info("Processing dataset...")
 
-    # Read files (only the ones in the date range)
+    # Lectura (solo los archivos del rango de fechas)
     filenames = [p.split("/")[-1] for p in paths_list]
     df_months = read_raw_data(input_path=input_path, file_type="month", allowed_files=filenames)
     df_nom = read_raw_data(input_path=input_path, file_type="nom", allowed_files=filenames)
 
-    # Standarize column names
+    # Nombres de columna uniformes y solo las columnas del contrato
     df_months = norm_cols(df_months)
     df_nom = norm_cols(df_nom)[list(STATION_COLUMNS)]
 
-    # Clean trips
+    # Limpieza de viajes
     df_months = clean_trips(df_months, df_nom)
 
-    # Write to parquet
+    # Escritura en Parquet
     logger.info("Saving processed dataset...")
     TRIPS_PATH.parent.mkdir(parents=True, exist_ok=True)
     df_months.to_parquet(TRIPS_PATH, index=False)
