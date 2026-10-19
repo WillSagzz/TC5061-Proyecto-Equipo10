@@ -613,12 +613,12 @@ equipo de cuatro personas cada integrante es el responsable principal de uno de 
 pero todos participan en las decisiones de la propuesta, abren *Pull Requests* y revisan los
 de los demás.
 
-| Integrante | Matrícula | Usuario de GitHub | Rol | Responsabilidades en el proyecto |
-|---|---|---|---|---|
-| Mariely Toribio Rodríguez | A01797848 | [a01797848](https://github.com/a01797848) | **Data Scientist** | Formulación de las preguntas, exploración de los datos, modelos y métricas. |
-| Guillermo Sáenz González | A00823049 | [WillSagzz](https://github.com/WillSagzz) | **Data Engineer** | Ingesta y versionado de los datos; administración del repositorio. |
-| Victor Yoguel Salazar Alanis | A01797950 | [CFOP2357](https://github.com/CFOP2357) | **Machine Learning Architect** | Arquitectura del sistema, flujo de trabajo, registro de experimentos y entorno reproducible. |
-| Alan Augusto Herrera Sánchez | A01338336 | [alanhsa9](https://github.com/alanhsa9) | **Subject Matter Expert** | ML Canvas y validación de las decisiones desde la operación de MiBici. |
+| Integrante | Matrícula | Usuario de GitHub | Rol |
+|---|---|---|---|
+| Mariely Toribio Rodríguez | A01797848 | [a01797848](https://github.com/a01797848) | **Data Scientist** |
+| Guillermo Sáenz González | A00823049 | [WillSagzz](https://github.com/WillSagzz) | **Data Engineer** |
+| Victor Yoguel Salazar Alanis | A01797950 | [CFOP2357](https://github.com/CFOP2357) | **Machine Learning Architect** |
+| Alan Augusto Herrera Sánchez | A01338336 | [alanhsa9](https://github.com/alanhsa9) | **Subject Matter Expert** |
 
 **Declaración de uso de IA.** El equipo usó asistentes de IA para edición de código y gestión
 del repositorio bajo un esquema *human-in-the-loop*: las decisiones fueron dirigidas, revisadas
