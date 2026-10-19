@@ -436,18 +436,10 @@ responde qué cambia, por qué y cómo probarlo desde un clon limpio.
 - Las funciones nuevas de `features.py` tienen *docstring* y no usan información del futuro.
 - El nombre de la rama y los mensajes de commit siguen las convenciones.
 
-**Evidencia de colaboración.** Cada integrante ha abierto al menos un PR y revisado al menos
-uno de otro integrante:
-
-| PR | Rama | Autor | Revisor |
-|---|---|---|---|
-| [#1](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/1) | `chore/readme-flujo-trabajo` | CFOP2357 | alanhsa9 |
-| [#2](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/2) | `chore/entrega01-propuesta-pdf` | CFOP2357 | WillSagzz |
-| [#3](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/3) | `docs/ml-canvas` | alanhsa9 | WillSagzz |
-| [#4](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/4) | `feature/download-dataset` | WillSagzz | a01797848 |
-| [#5](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/5) | `chore/actualiza-secciones-entrega01` | a01797848 | CFOP2357 |
-| [#6](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/6) | `fix/folder-naming` | CFOP2357 | WillSagzz |
-| [#7](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/7) | `docs/entrega01-arquitectura` | CFOP2357 | WillSagzz |
+**Evidencia de colaboración.** Cada integrante ha abierto al menos un *Pull Request* y
+revisado al menos uno de otro integrante; la evidencia está en la
+[pestaña de *Pull Requests*](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pulls?q=is%3Apr)
+del repositorio.
 
 ### 6. Qué nunca entra al repositorio
 
