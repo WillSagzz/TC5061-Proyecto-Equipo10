@@ -63,6 +63,12 @@ data: requirements
 	$(PYTHON_INTERPRETER) feature_engineering/dataset.py
 
 
+## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
+.PHONY: entrega01
+entrega01:
+	$(PYTHON_INTERPRETER) docs/entregas/build.py docs/entregas/entrega01
+
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
