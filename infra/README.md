@@ -88,7 +88,7 @@ administra el servidor: la **URL**, tu **usuario** y tu **contraseña inicial**.
 
 ### 1. Crear tu `.env`
 
-En la raíz del repositorio, copia la plantilla y llena las tres variables:
+En la raíz del repositorio, copia la plantilla, quita el `#` de las tres variables y llénalas:
 
 ```bash
 cp .env.example .env
@@ -255,8 +255,13 @@ identidad antes de desplegar y los imprime como expresiones. Es ruido conocido.
 - **`default_permission = READ`** en la autenticación básica, y la edición por **rol con
   comodín** (`editores`: `EDIT` en `experiment:*` y `registered_model:*`, asignado por
   `create_users.py`). Se prefirió a `default_permission = EDIT` porque así el usuario de solo
-  lectura nunca puede escribir, y a los permisos por experimento porque esos no cubren los
-  experimentos nuevos. La base de usuarios y roles es la misma PostgreSQL del *tracking*
+  lectura nunca puede modificar nada del equipo, y a los permisos por experimento porque esos
+  no cubren los experimentos nuevos. **Limitación conocida:** sin *workspaces*, MLflow deja a
+  cualquier usuario autenticado crear experimentos y modelos registrados nuevos y lo hace
+  administrador de ellos. El usuario de solo lectura no puede tocar los experimentos, *runs* ni
+  modelos del equipo, pero sí podría crear los suyos; si ocurre, el `admin` los borra desde la
+  interfaz. Activar *workspaces* lo evitaría, pero cambia la API y no se ha probado con el
+  cliente 3.4 del repositorio. La base de usuarios y roles es la misma PostgreSQL del *tracking*
   (tablas propias), así que sobrevive a redeploys.
 - **Firewall de PostgreSQL** con la regla `0.0.0.0` ("servicios de Azure") porque la Container
   App del plan Consumption no tiene IP fija. Para conectarte con `psql` desde tu máquina agrega

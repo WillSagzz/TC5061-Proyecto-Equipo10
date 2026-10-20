@@ -29,6 +29,10 @@ class AuthApi:
         return response.json() if response.content else {}
 
     # Usuarios ----------------------------------------------------------------------------
+    def list_users(self) -> list[dict]:
+        """Todos los usuarios con sus roles (``username``, ``is_admin``, ``roles``)."""
+        return self._ok("GET", "/api/2.0/mlflow/users/list").get("users", [])
+
     def user_exists(self, username: str) -> bool:
         response = self._call("GET", "/api/2.0/mlflow/users/get", params={"username": username})
         if response.status_code == 200:
@@ -36,10 +40,6 @@ class AuthApi:
         if response.status_code in (400, 404):
             return False
         raise RuntimeError(f"users/get -> {response.status_code}: {response.text[:300]}")
-
-    def list_users(self) -> list[str]:
-        data = self._ok("GET", "/api/2.0/mlflow/users/list")
-        return [user["username"] for user in data.get("users", [])]
 
     def create_user(self, username: str, password: str) -> None:
         self._ok(
@@ -95,9 +95,9 @@ class AuthApi:
         }
         self._ok("POST", "/api/3.0/mlflow/roles/permissions/add", json=body)
 
-    def list_user_roles(self, username: str) -> list[dict]:
-        data = self._ok("GET", "/api/3.0/mlflow/users/roles/list", params={"username": username})
-        return data.get("roles", [])
+    def update_role_permission(self, role_permission_id: int, permission: str) -> None:
+        body = {"role_permission_id": role_permission_id, "permission": permission}
+        self._ok("PATCH", "/api/3.0/mlflow/roles/permissions/update", json=body)
 
     def assign_role(self, username: str, role_id: int) -> None:
         body = {"username": username, "role_id": role_id}

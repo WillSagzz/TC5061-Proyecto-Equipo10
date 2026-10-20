@@ -4,10 +4,11 @@ Lee ``infra/users.txt`` (archivo local, fuera de Git; formato en ``users.example
 por persona, ``usuario,rol``; rol ``editor`` o ``lector``), crea los usuarios que falten con una
 contraseña generada y asigna a los editores el rol ``editores``, que tiene permiso ``EDIT`` sobre
 todos los experimentos y modelos registrados, presentes y futuros (patrón ``*``). Los lectores
-se quedan con el permiso por defecto del servidor, ``READ``. Escribe las contraseñas nuevas en
-``infra/.users.env`` (fuera de Git) para entregarlas en privado. Es idempotente: se puede volver
-a correr cuando entre o salga una persona. Con ``--prune`` borra los usuarios que ya no estén
-en la lista y con ``--reset USUARIO`` le asigna una contraseña nueva a quien olvidó la suya.
+se quedan con el permiso por defecto del servidor, ``READ``. Cada contraseña nueva se escribe en
+``infra/.users.env`` (fuera de Git) en cuanto el servidor la acepta, para entregarla en privado.
+Es idempotente: se puede volver a correr cuando entre o salga una persona; nunca cambia la
+contraseña de un usuario que ya existe. Con ``--prune`` borra los usuarios que ya no estén en la
+lista y con ``--reset USUARIO`` le asigna una contraseña nueva a quien olvidó la suya.
 
 Lo ejecuta ``make infra-users`` con las credenciales de ``admin``.
 """
@@ -34,7 +35,9 @@ except ImportError:  # pragma: no cover
     MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "")
 
 ROLES = {"editor": True, "lector": False}  # ¿recibe el rol de edición?
-PROTECTED = {"admin"}
+PROTECTED = {
+    "admin"
+}  # nunca se borra ni se restablece desde aquí (su contraseña vive en .secrets.env)
 # Sin --enable-workspaces todos los recursos y roles viven en el workspace por defecto
 WORKSPACE = "default"
 EDITOR_ROLE = "editores"
@@ -57,8 +60,17 @@ def read_users(path: Path) -> dict[str, str]:
         role = role or "editor"
         if role not in ROLES:
             sys.exit(f"Rol desconocido '{role}' para {username}; usa editor o lector")
+        if username in PROTECTED:
+            sys.exit(f"'{username}' se gestiona aparte; quítalo de {path.name}")
         users[username] = role
     return users
+
+
+def save_password(path: Path, username: str, password: str) -> None:
+    """Anexa la contraseña al archivo local en cuanto el servidor la acepta."""
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"{username}={password}  # generada el {stamp}; NO entra a Git\n")
 
 
 def ensure_editor_role(api: AuthApi) -> int:
@@ -70,13 +82,17 @@ def ensure_editor_role(api: AuthApi) -> int:
         )
         print(f"  + rol '{EDITOR_ROLE}': creado")
     granted = {
-        (p["resource_type"], p["resource_pattern"])
+        (p["resource_type"], p["resource_pattern"]): p
         for p in api.get_role(role["id"]).get("permissions", [])
     }
     for resource_type, pattern, permission in EDITOR_ROLE_PERMISSIONS:
-        if (resource_type, pattern) not in granted:
+        current = granted.get((resource_type, pattern))
+        if current is None:
             api.add_role_permission(role["id"], resource_type, pattern, permission)
             print(f"  ~ rol '{EDITOR_ROLE}': {permission} en {resource_type}:{pattern}")
+        elif current["permission"] != permission:
+            api.update_role_permission(current["id"], permission)
+            print(f"  ~ rol '{EDITOR_ROLE}': {resource_type}:{pattern} pasa a {permission}")
     return role["id"]
 
 
@@ -101,25 +117,35 @@ def main() -> None:
             f"Falta {args.users_file}: cópialo de users.example.txt con los usuarios del equipo "
             "(ese archivo no se versiona)"
         )
+    if PROTECTED & set(args.reset):
+        sys.exit(
+            "La contraseña de admin se rota con change_password.py y se guarda en .secrets.env"
+        )
+
     api = AuthApi(args.url, "admin", admin_password)
     wanted = read_users(args.users_file)
-    created: dict[str, str] = {}
+    # Una sola llamada da existencia y roles de todos; evita dos peticiones por usuario
+    existing = {u["username"]: u for u in api.list_users()}
+    new_passwords = 0
 
     for username in wanted:
-        if api.user_exists(username):
+        if username in existing:
             print(f"  = {username}: ya existe")
             continue
         password = generate_password()
         api.create_user(username, password)
-        created[username] = password
+        save_password(args.out, username, password)
+        new_passwords += 1
+        existing[username] = {"username": username, "roles": []}
         print(f"  + {username}: creado")
 
     for username in args.reset:
-        if not api.user_exists(username):
+        if username not in existing:
             sys.exit(f"No existe el usuario {username}")
         password = generate_password()
         api.update_password(username, password, current_password=None)  # admin: sin la actual
-        created[username] = password
+        save_password(args.out, username, password)
+        new_passwords += 1
         print(f"  * {username}: contraseña restablecida")
 
     # El experimento del equipo se crea aquí para que exista desde el primer `make train`.
@@ -132,7 +158,7 @@ def main() -> None:
     # se quedan con el permiso por defecto del servidor (READ).
     editor_role_id = ensure_editor_role(api)
     for username, role in wanted.items():
-        has_role = any(r["id"] == editor_role_id for r in api.list_user_roles(username))
+        has_role = any(r["id"] == editor_role_id for r in existing[username].get("roles", []))
         if ROLES[role] and not has_role:
             api.assign_role(username, editor_role_id)
             print(f"  ~ {username}: rol '{EDITOR_ROLE}' asignado")
@@ -141,18 +167,15 @@ def main() -> None:
             print(f"  ~ {username}: rol '{EDITOR_ROLE}' retirado (solo lectura)")
 
     if args.prune:
-        for username in api.list_users():
+        for username in existing:
             if username not in wanted and username not in PROTECTED:
                 api.delete_user(username)
                 print(f"  - {username}: eliminado")
 
-    if created:
-        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        with args.out.open("a", encoding="utf-8") as handle:
-            handle.write(f"# Contraseñas generadas el {stamp}. NO entra a Git.\n")
-            for username, password in created.items():
-                handle.write(f"{username}={password}\n")
-        print(f"\nContraseñas nuevas en {args.out}; entrégalas por un canal privado.")
+    if new_passwords:
+        print(
+            f"\n{new_passwords} contraseña(s) nueva(s) en {args.out}; entrégalas por un canal privado."
+        )
     print(f"\nListo: {len(wanted)} usuarios en {args.url}")
 
 
