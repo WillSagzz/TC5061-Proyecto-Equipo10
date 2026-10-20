@@ -7,6 +7,11 @@ mlruns/
 mlartifacts/
 mlflow.db
 
+# Servidor MLflow en Azure: secretos del despliegue y contraseñas generadas, nunca en Git
+infra/.secrets.env
+infra/.users.env
+infra/users.txt
+
 # Modelos serializados: se regeneran con el código de entrenamiento
 *.pkl
 *.pickle

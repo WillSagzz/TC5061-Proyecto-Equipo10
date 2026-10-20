@@ -6,6 +6,12 @@ PROJECT_NAME = TC5061-Proyecto-Equipo10
 PYTHON_VERSION = 3.10
 PYTHON_INTERPRETER = python
 
+# Servidor MLflow compartido en Azure (infra/). Solo lo usa quien administra la suscripción.
+AZ_RG = rg-mibici-equipo10
+AZ_LOCATION = mexicocentral
+AZ_APP = mlflow
+INFRA_SECRETS = infra/.secrets.env
+
 #################################################################################
 # COMMANDS                                                                      #
 #################################################################################
@@ -85,6 +91,91 @@ train:
 .PHONY: entrega01
 entrega01:
 	$(PYTHON_INTERPRETER) docs/entregas/build.py docs/entregas/entrega01
+
+
+#################################################################################
+# SERVIDOR MLFLOW COMPARTIDO EN AZURE (infra/README.md)                         #
+#################################################################################
+# Requiere Azure CLI con sesión iniciada (`az login`) en la suscripción del equipo.
+# Los secretos viven en infra/.secrets.env, fuera de Git.
+
+## Install Bicep, the Container Apps extension and register the Azure providers (once)
+.PHONY: infra-prereqs
+infra-prereqs:
+	az bicep install
+	az extension add --name containerapp --upgrade --allow-preview true
+	az provider register --namespace Microsoft.App --wait
+	az provider register --namespace Microsoft.DBforPostgreSQL --wait
+	az provider register --namespace Microsoft.Storage --wait
+	az provider register --namespace Microsoft.OperationalInsights --wait
+	az provider register --namespace Microsoft.ManagedIdentity --wait
+
+## Generate the deployment secrets once into infra/.secrets.env (never versioned)
+.PHONY: infra-secrets
+infra-secrets:
+	bash infra/scripts/generate_secrets.sh
+
+## Preview the changes Bicep would make (what-if), without deploying
+.PHONY: infra-plan
+infra-plan:
+	@test -f $(INFRA_SECRETS) || { echo "Falta $(INFRA_SECRETS): corre make infra-secrets"; exit 1; }
+	az group create --name $(AZ_RG) --location $(AZ_LOCATION) --output none
+	set -a && . ./$(INFRA_SECRETS) && set +a && \
+	export AZ_ADMIN_OBJECT_ID=$$(az ad signed-in-user show --query id -o tsv 2>/dev/null || true) && \
+	az deployment group what-if --resource-group $(AZ_RG) --name $(AZ_APP) \
+		--template-file infra/main.bicep --parameters infra/main.bicepparam
+
+## Deploy or update the MLflow server (resource group + Bicep) and print its URL
+.PHONY: infra-deploy
+infra-deploy:
+	@test -f $(INFRA_SECRETS) || { echo "Falta $(INFRA_SECRETS): corre make infra-secrets"; exit 1; }
+	az group create --name $(AZ_RG) --location $(AZ_LOCATION) --output none
+	set -a && . ./$(INFRA_SECRETS) && set +a && \
+	export AZ_ADMIN_OBJECT_ID=$$(az ad signed-in-user show --query id -o tsv 2>/dev/null || true) && \
+	az deployment group create --resource-group $(AZ_RG) --name $(AZ_APP) \
+		--template-file infra/main.bicep --parameters infra/main.bicepparam \
+		--query "properties.outputs.mlflowUrl.value" -o tsv
+
+## Print the URL of the shared MLflow server
+.PHONY: infra-url
+infra-url:
+	@echo https://$$(az containerapp show -g $(AZ_RG) -n $(AZ_APP) --query properties.configuration.ingress.fqdn -o tsv)
+
+## Create the users of infra/users.txt (local, not versioned) and grant their permissions (PRUNE=1 deletes others)
+.PHONY: infra-users
+infra-users:
+	@test -f infra/users.txt || { echo "Falta infra/users.txt: copia infra/users.example.txt y pon los usuarios del equipo"; exit 1; }
+	set -a && . ./$(INFRA_SECRETS) && set +a && \
+	export MLFLOW_URL=https://$$(az containerapp show -g $(AZ_RG) -n $(AZ_APP) --query properties.configuration.ingress.fqdn -o tsv) && \
+	$(PYTHON_INTERPRETER) infra/scripts/create_users.py $(if $(PRUNE),--prune,)
+
+## Reset a user's password as admin (USUARIO=nombre); the new one goes to infra/.users.env
+.PHONY: infra-reset-password
+infra-reset-password:
+	@test -n "$(USUARIO)" || { echo "Uso: make infra-reset-password USUARIO=nombre"; exit 1; }
+	set -a && . ./$(INFRA_SECRETS) && set +a && \
+	export MLFLOW_URL=https://$$(az containerapp show -g $(AZ_RG) -n $(AZ_APP) --query properties.configuration.ingress.fqdn -o tsv) && \
+	$(PYTHON_INTERPRETER) infra/scripts/create_users.py --reset $(USUARIO)
+
+## Smoke test of the shared server with the credentials of your .env
+.PHONY: infra-check
+infra-check:
+	$(PYTHON_INTERPRETER) infra/scripts/check_server.py
+
+## Follow the server logs
+.PHONY: infra-logs
+infra-logs:
+	az containerapp logs show -g $(AZ_RG) -n $(AZ_APP) --type console --follow --tail 100
+
+## Delete the whole resource group (asks for confirmation)
+.PHONY: infra-destroy
+infra-destroy:
+	az group delete --name $(AZ_RG)
+
+## Change your own password on the shared MLflow server (uses .env; no Azure needed)
+.PHONY: mlflow-password
+mlflow-password:
+	$(PYTHON_INTERPRETER) infra/scripts/change_password.py
 
 
 #################################################################################
