@@ -12,7 +12,7 @@ con el contrato de datos definido en ``config.py``. Ninguna usa datos personales
 Funciones compartidas por las tres preguntas:
 
 - ``load_data``: carga los viajes y las estaciones y valida el contrato.
-- ``get_data_version``: versión de los datos, para registrarla en MLflow.
+- ``get_data_version``: versión de los datos (``datapackage.json``), para registrarla en MLflow.
 - ``split_by_date``: partición temporal en entrenamiento, validación y prueba.
 - ``build_station_period_table``: salidas, llegadas y flujo neto por estación y periodo
   (P1 y P2).
@@ -23,7 +23,6 @@ Funciones compartidas por las tres preguntas:
 Funciones de cada pregunta: ``build_p1_table``, ``build_p2_table`` y ``build_p3_table``.
 """
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -34,7 +33,7 @@ import pyarrow.dataset as pa_dataset
 
 from mibici.config import (
     DATA_END,
-    DATA_MANIFEST_PATH,
+    DATAPACKAGE_PATH,
     DAY_PERIODS,
     FLOW_LAG_HOURS,
     LAG_HOURS,
@@ -165,34 +164,32 @@ def load_data(
     return trips.rename(columns=RENAME_COLUMNS), stations.rename(columns=RENAME_COLUMNS)
 
 
-def get_data_version(
-    manifest_path: Path = DATA_MANIFEST_PATH,
-    trips_path: Path = TRIPS_PATH,
-    stations_path: Path = STATIONS_PATH,
-) -> str:
+def get_data_version(datapackage_path: Path = DATAPACKAGE_PATH) -> str:
     """Devuelve la versión de los datos, para registrarla como parámetro en MLflow.
 
-    Usa el campo ``version`` del manifiesto que genera ``dataset.py``. Si no existe, calcula
-    el hash SHA-256 de los Parquet: el mismo contenido da siempre la misma versión.
+    Es el campo ``version`` del descriptor ``datapackage.json`` que escribe ``make snapshot``
+    (por ejemplo ``2026-10``). ``make data`` solo produce Parquet que coinciden con ese
+    descriptor, así que la versión identifica exactamente los datos con que se entrena.
 
     Args:
-        manifest_path: Manifiesto de la ingesta.
-        trips_path: Parquet de viajes.
-        stations_path: Parquet de estaciones.
+        datapackage_path: Descriptor Frictionless Data Package versionado en Git.
 
     Returns:
-        Identificador de 12 caracteres.
+        Versión declarada en el descriptor.
+
+    Raises:
+        FileNotFoundError: Si el descriptor no existe.
+        ValueError: Si el descriptor no declara una versión.
     """
-    if Path(manifest_path).exists():
-        version = json.loads(Path(manifest_path).read_text()).get("version")
-        if version:
-            return str(version)
-    digest = hashlib.sha256()
-    for path in (trips_path, stations_path):
-        with open(path, "rb") as file:
-            for block in iter(lambda: file.read(1024 * 1024), b""):
-                digest.update(block)
-    return digest.hexdigest()[:12]
+    path = Path(datapackage_path)
+    if not path.exists():
+        raise FileNotFoundError(f"No existe {path}. Genera el descriptor con `make snapshot`.")
+    version = json.loads(path.read_text(encoding="utf-8")).get("version")
+    if not version:
+        raise ValueError(
+            f"{path.name} no declara `version`. Regenera el descriptor con `make snapshot`."
+        )
+    return str(version)
 
 
 # -----------------------------------------------------------------------------

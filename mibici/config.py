@@ -62,8 +62,11 @@ STATION_COLUMNS = {
     "dpcapacity": "integer",  # número de anclajes
 }
 
-# Manifiesto con la versión de los datos: lo genera dataset.py y se versiona en Git
-DATA_MANIFEST_PATH = PROJ_ROOT / "data_manifest.json"
+# Descriptor Frictionless Data Package con la versión de los datos: lo escribe `make snapshot`
+# (datapackage.py), se versiona en Git y `make data` (dataset.py) verifica cada archivo contra
+# él antes de procesarlo. Las rutas de los recursos son relativas a la raíz del repositorio.
+DATAPACKAGE_PATH = PROJ_ROOT / "datapackage.json"
+RAW_VALIDATION_ROWS = 10_000  # filas de cada CSV que `make data` valida contra el esquema
 
 # Limpieza de viajes
 MIN_TRIP_MINUTES = 1  # retiros y devoluciones en la misma estación por debajo de esto

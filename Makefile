@@ -57,10 +57,22 @@ create_environment:
 #################################################################################
 
 
-## Make dataset
+## Rebuild the data version described in datapackage.json: download, verify hashes, clean, write Parquet
 .PHONY: data
 data:
 	$(PYTHON_INTERPRETER) -m mibici.dataset
+
+
+## Freeze a new data version and write datapackage.json (optional: VERSION=2026-10 START=... END=...)
+.PHONY: snapshot
+snapshot:
+	$(PYTHON_INTERPRETER) -m mibici.datapackage snapshot $(if $(VERSION),--version $(VERSION)) $(if $(START),--start $(START)) $(if $(END),--end $(END))
+
+
+## Validate the local data against datapackage.json (hashes, sizes and every row of each schema)
+.PHONY: validate
+validate:
+	$(PYTHON_INTERPRETER) -m mibici.datapackage validate
 
 
 ## Train the baselines of P1, P2 and P3 and log them to MLflow
