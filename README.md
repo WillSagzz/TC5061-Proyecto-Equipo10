@@ -90,7 +90,7 @@ para que las métricas de las entregas sean comparables.
 | Medida | Valor |
 |---|---|
 | Meses | 24 (2024-09 a 2026-08) |
-| Viajes | 8,943,941 (promedio de 372,664 por mes); 8,702,429 tras la limpieza, según `data_manifest.json` |
+| Viajes | 8,943,941 (promedio de 372,664 por mes); 8,702,429 tras la limpieza, según el recurso `meses` de `datapackage.json` |
 | Estaciones en el catálogo | 484 |
 | Estaciones con viajes en el periodo | 472, de las cuales 470 están en el catálogo |
 | Estaciones con viajes pero sin catálogo | 2 (ID 405 y 407; se excluyen en la limpieza) |
@@ -149,17 +149,78 @@ las tres preguntas. Para evitar fuga de información del futuro:
 
 ### Versionado de los datos
 
-El repositorio no puede contener ningún byte de MiBici, así que lo que se versiona es una
-**descripción suficiente para reconstruir y verificar los datos**: el manifiesto
-[`data_manifest.json`](data_manifest.json), que escribe la ingesta en la raíz del repositorio.
-Contiene la versión de datos, la fecha de generación, el rango de meses, el número de viajes
-limpios y de estaciones, el hash SHA-256 de cada uno de los 25 archivos crudos y el de los dos
-Parquet procesados. La versión (`1c3d603c990c`) son los primeros 12 caracteres del SHA-256 de
-los hashes de los Parquet: depende solo del contenido, así que dos integrantes con los mismos
-archivos obtienen la misma versión, y un archivo republicado por el portal o un cambio en las
-reglas de limpieza producen una versión distinta que `git diff` muestra antes de entrar a
-`main` por *Pull Request*, igual que un *lockfile*. Cada *run* de MLflow registra la versión
-como el parámetro `version_datos`.
+Los datos no están en Git. Lo que está en Git es [`datapackage.json`](datapackage.json): la
+lista de los 25 archivos del portal de MiBici (URL, tamaño, hash SHA-256 y columnas de cada
+uno), los 2 Parquet que produce la ingesta y una versión (`version`, por ejemplo `2026-10`).
+`make data` descarga los archivos y los compara con esa lista antes de procesarlos; si alguno
+no coincide, se detiene. Solo `make snapshot` cambia `datapackage.json`, y el cambio entra a
+`main` por *Pull Request*.
+
+Todos los comandos se corren desde la raíz del repositorio con el entorno virtual activado
+(ver [Instalación](#instalación)).
+
+#### Qué hacer en cada situación
+
+| Quiero | Comando |
+|---|---|
+| Tener los datos en mi máquina | `make data` |
+| Saber qué versión uso | `version` en `datapackage.json` |
+| Ver el historial de versiones | `git log -- datapackage.json` |
+| Comprobar a fondo mis datos locales | `make validate` |
+| Publicar una versión nueva | ver abajo |
+
+`make data` se corre después de clonar y cada vez que `datapackage.json` cambia en `main`.
+En MLflow, cada *run* lleva la versión en el parámetro `version_datos`. No edites
+`datapackage.json` a mano ni cambies `START_DATE` o `END_DATE` en `config.py` sin publicar
+una versión nueva.
+
+#### Publicar una versión nueva
+
+Hace falta en tres casos: `make data` se detuvo porque el portal cambió un archivo; cambiaste
+las reglas de limpieza en `config.py` o `dataset.py`; o el equipo cambia la ventana de meses.
+
+```bash
+git checkout -b chore/datos-2026-11
+make snapshot VERSION=2026-11      # descarga los 25 archivos (~760 MB), limpia, escribe datapackage.json y lo valida
+git diff --stat datapackage.json   # confirma que cambió lo que esperabas
+make train                         # los baselines deben correr con la versión nueva
+git add datapackage.json
+git commit -m "chore(datos): congela la versión de datos 2026-11 por republicación de 2025-03"
+git push -u origin chore/datos-2026-11   # abre el PR
+```
+
+Si solo cambiaste reglas de limpieza y ya tienes los archivos en `data/raw/`, usa
+`python -m mibici.datapackage snapshot --version 2026-11 --reuse-raw` para no descargarlos
+otra vez. Cuando el PR entre a `main`, el resto del equipo hace `git pull` y `make data`.
+
+#### Revisar un PR que cambia `datapackage.json`
+
+1. `version` es nueva.
+2. El *diff* corresponde al motivo del PR. Portal republicó un archivo: cambian `hash` y
+   `bytes` de ese recurso. Cambió la limpieza: cambian `rows`, `bytes` y `hash` de `meses`.
+   Cambió la ventana: aparecen o desaparecen recursos. Cualquier otro cambio se pregunta.
+3. `rows` de `meses` sigue cerca de 8.7 millones.
+4. `make data` en la rama termina sin error.
+
+#### Si `make data` se detiene
+
+El mensaje nombra el archivo y la causa. Según el mensaje:
+
+- **`espera N bytes` o `espera sha256 ...`**. El portal republicó ese archivo, o tu
+  `datapackage.json` está desactualizado. Haz `git pull` y repite; si sigue, publica una
+  versión nueva.
+- **`Falta el archivo ...` o HTTP 404**. El portal cambió la URL. Publica una versión nueva;
+  `make snapshot` descubre las URL nuevas.
+- **`no cumplen el esquema`**. Un mes llegó con otras columnas, codificación o formato de
+  fecha. Ajusta la lectura en `dataset.py` (`detect_encoding`, `norm_cols`, `parse_dates`) y
+  publica una versión nueva.
+- **`espera N filas` o hash distinto en un Parquet**. Cambiaron las reglas de limpieza o tu
+  entorno no es el de `requirements.txt`. Si el cambio es tuyo, publica una versión nueva
+  con `--reuse-raw`; si no, `pip install -r requirements.txt` y revisa `git status`.
+- **`El descriptor cubre ... y config.py pide ...`**. `START_DATE` o `END_DATE` no coinciden
+  con `datapackage.json`. Revierte `config.py` o publica una versión nueva.
+- **`No existe datapackage.json` o `no declara version`**. Archivo borrado o editado. Haz
+  `git checkout main -- datapackage.json`.
 
 ## Arquitectura y pipeline
 
@@ -172,8 +233,8 @@ entrega. Fuente del diagrama: [`references/arquitectura.mmd`](references/arquite
 | # | Componente | Herramienta | Por qué |
 |---|---|---|---|
 | 1 | Fuentes de datos | Portal de MiBici; enlaces descubiertos con `requests` y BeautifulSoup | Única fuente oficial; el portal asigna los identificadores de las URL. |
-| 2 | Configuración y versión de datos | `config.py` y `data_manifest.json` en Git | Una sola fuente de rutas, fechas, semillas y parámetros; manifiesto con hashes para reconstruir los datos sin almacén remoto. |
-| 3 | Ingesta | `dataset.py` con Typer, pandas, pyarrow, hashlib y loguru | Comando sin pasos manuales; Parquet reduce la lectura de los 24 meses de 135 s a 1.4 s. |
+| 2 | Configuración y versión de datos | `config.py` y `datapackage.json` (Frictionless Data Package) en Git; `datapackage.py` lo escribe con `make snapshot` | Una sola fuente de rutas, fechas, semillas y parámetros; descriptor estándar con URL, hash, tamaño y esquema de cada archivo para reconstruir y verificar los datos sin almacén remoto. |
+| 3 | Ingesta | `dataset.py` con Typer, `frictionless`, pandas, pyarrow, hashlib y loguru | Comando sin pasos manuales que verifica cada archivo contra el descriptor antes de procesarlo; Parquet reduce la lectura de los 24 meses de 135 s a 1.4 s. |
 | 4 | Almacenamiento | `data/raw`, `data/processed`, `models/`, `mlflow.db` y `mlartifacts/` (locales, fuera de Git) | Los datos caben en memoria; se reconstruyen en cualquier máquina con el comando de ingesta. Las tablas de modelado se construyen en memoria al entrenar. |
 | 5 | *Feature engineering* | Funciones en `features.py` con contrato de datos en `config.py`; `Pipeline` de scikit-learn | Evita fugas temporales y *train-serving skew*; código modular y comprobable. |
 | 6 | Entrenamiento | `modeling/train.py` y `modeling/baselines.py` con scikit-learn | Cubre *baselines*, candidatos y métricas; partición cronológica. |
@@ -222,7 +283,9 @@ Las rutas, fechas y semillas salen de `config.py`.
 
 | Comando | Equivalente en Python | Qué hace |
 |---|---|---|
-| `make data` | `python -m mibici.dataset` | **Ingesta reproducible.** Lee la página de datos abiertos, descubre los enlaces de los meses del periodo y del catálogo, descarga a `data/raw/` lo que no esté ya descargado, detecta la codificación, normaliza nombres de columna y fechas, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y regenera `data_manifest.json` con el hash SHA-256 de cada archivo y la versión de datos. |
+| `make data` | `python -m mibici.dataset` | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. |
+| `make snapshot VERSION=2026-10` | `python -m mibici.datapackage snapshot --version 2026-10` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
+| `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
 | `make train` | `python -m mibici.modeling.train all` (o `p1`, `p2`, `p3` para una sola pregunta) | **Experimento base.** Construye en memoria las tablas de P1, P2 y P3, entrena el *baseline* de cada pregunta con partición cronológica, lo evalúa, guarda el modelo en `models/` y registra el *run* en MLflow. |
 | `python -m mibici.modeling.predict p1` (o `p2`, `p3`) | — | **Inferencia.** Carga el modelo de `models/`, reconstruye la tabla de la pregunta y escribe las predicciones del conjunto de prueba (P1 y P2) o el grupo de cada estación (P3) en `data/processed/`. |
 | `mlflow ui --backend-store-uri sqlite:///mlflow.db` | — | Abre la interfaz de MLflow en <http://127.0.0.1:5000> sobre la base local. |
@@ -246,15 +309,17 @@ El experimento se ejecuta desde el código del repositorio (`train.py`), nunca s
   (P2); `train_silhouette` y `train_davies_bouldin`, más sus curvas por `k` (P3).
 - **Etiquetas:** `equipo=equipo10`, `pregunta` (`P1`, `P2` o `P3`), `git_commit` con el SHA del
   commit que lo ejecutó, `git_cambios_sin_commit` y `tipo_modelo` (`baseline` o `candidato`).
+- **Conjunto de datos como entrada del *run*:** el *dataset* `datapackage`, con
+  `version_datos` como huella, en la pestaña *Datasets* de la interfaz.
 - **Artefactos:** al menos una figura por pregunta (serie real contra predicha en P1, matriz de
-  confusión en P2, mapa de los grupos de estaciones en P3), el modelo serializado y, en P3, las
-  tablas de grupos.
+  confusión en P2, mapa de los grupos de estaciones en P3), el modelo serializado, el
+  descriptor `datapackage.json` y, en P3, las tablas de grupos.
 - **Nunca** credenciales ni datos personales como parámetros, etiquetas o artefactos.
 
 Para reproducirlo desde un clon limpio:
 
 ```bash
-make data                                          # descarga, limpia, escribe Parquet y el manifiesto
+make data                                          # descarga, verifica contra datapackage.json, limpia y escribe Parquet
 make train                                         # construye las tablas y registra los tres baselines
 mlflow ui --backend-store-uri sqlite:///mlflow.db  # revisa los runs en http://127.0.0.1:5000
 ```
@@ -274,7 +339,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── requirements.txt      <- Dependencias con versión fija para reproducir el entorno
 ├── .gitignore            <- Excluye data/, mlruns/, mlartifacts/, mlflow.db, .env y modelos serializados
 ├── .env.example          <- Nombres de las variables de entorno de MLflow (sin valores)
-├── data_manifest.json    <- Versión de datos: SHA-256 de cada CSV y Parquet y conteos; lo escribe `make data`
+├── datapackage.json      <- Versión de datos (Frictionless Data Package): URL, bytes, SHA-256 y esquema de cada CSV y Parquet; lo escribe `make snapshot`
 │
 ├── data                  <- Excluida de Git; la genera `make data`
 │   ├── raw               <- CSV tal como se descargan del portal (inmutables)
@@ -299,7 +364,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 └── mibici                <- Código fuente del proyecto
     ├── __init__.py       <- Hace de `mibici` un paquete de Python
     ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
-    ├── dataset.py        <- Ingesta reproducible: descarga, normaliza, limpia, guarda en Parquet y escribe el manifiesto
+    ├── dataset.py        <- Ingesta reproducible: descarga y verifica contra el descriptor, normaliza, limpia y guarda en Parquet
+    ├── datapackage.py    <- Versión de los datos: `snapshot` escribe datapackage.json y `validate` lo comprueba con frictionless
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
     └── modeling
@@ -314,7 +380,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 | Ámbito | Práctica | Cómo la aplica el equipo | Dónde se verifica |
 |---|---|---|---|
 | MLflow Tracking | Un experimento por proyecto y *runs* con nombre descriptivo. | Experimento `mibici-equipo10`; nombres `P{n}-{etapa}-{modelo}` fijados en `train.py`. | Interfaz de MLflow. |
-| MLflow Tracking | Registrar todo lo necesario para reproducir el *run*. | Parámetros `version_datos`, fechas de la partición, `semilla`, modelo e hiperparámetros, tomados de `config.py` y del manifiesto. | Parámetros del *run*. |
+| MLflow Tracking | Registrar todo lo necesario para reproducir el *run*. | Parámetros `version_datos`, fechas de la partición, `semilla`, modelo e hiperparámetros, tomados de `config.py` y de `datapackage.json`; el *dataset* como entrada del *run*. | Parámetros y pestaña *Datasets* del *run*. |
 | MLflow Tracking | Ligar cada *run* con el código y la pregunta. | Etiquetas `git_commit`, `pregunta`, `equipo` y `tipo_modelo`. | Etiquetas del *run*. |
 | MLflow Tracking | Métricas con el conjunto en el nombre. | `test_mae`, `test_recall_vaciarse`, `train_silhouette`, etc. | Métricas del *run*. |
 | MLflow Tracking | Sin credenciales ni datos personales. | La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento`; `.env` está fuera de Git. | Interfaz de MLflow y código. |
@@ -452,7 +518,7 @@ Se versiona el **código que produce** los datos, los experimentos y los modelos
 
 | Excluido | Motivo |
 |---|---|
-| `data/` | los datos de MiBici se reconstruyen con `make data`; `data_manifest.json` permite verificar que son los mismos |
+| `data/` | los datos de MiBici se reconstruyen con `make data`, que verifica cada archivo contra `datapackage.json` antes de procesarlo |
 | `mlflow.db`, `mlartifacts/`, `mlruns/` | salida de los experimentos; cada *run* lleva el commit y la versión de datos con que se reproduce |
 | `*.pkl`, `*.pickle`, `*.joblib` | modelos serializados; se regeneran con `make train` |
 | `.env` y cualquier credencial | nunca deben salir del equipo local |

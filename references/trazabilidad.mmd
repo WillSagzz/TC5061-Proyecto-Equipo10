@@ -3,21 +3,21 @@
 %% Colores: azul = en Git · naranja = regenerado en cada máquina · verde = registro en MLflow.
 flowchart TB
 
-  MAN["<b>Manifiesto de datos (Git)</b><br/>data_manifest.json · version 1c3d603c990c<br/>SHA-256 de cada CSV y Parquet"]
+  MAN["<b>Descriptor de datos (Git)</b><br/>datapackage.json · version 2026-10<br/>URL · bytes · SHA-256 · esquema de cada CSV y Parquet<br/>(lo escribe make snapshot)"]
   COMMIT["<b>Commit del código (Git)</b><br/>mibici/ · config.py"]
   REQ["<b>Entorno (Git)</b><br/>requirements.txt con versiones fijas"]
 
-  DATA[("<b>Datos regenerados</b><br/>data/processed · meses.parquet · nomenclatura.parquet")]
-  CHECK["<b>Contrato de datos</b><br/>load_data valida columnas y tipos<br/>get_data_version lee el manifiesto"]
+  DATA[("<b>Datos regenerados</b><br/>data/raw verificado contra el descriptor antes de procesar<br/>data/processed · meses.parquet · nomenclatura.parquet")]
+  CHECK["<b>Contrato de datos</b><br/>load_data valida columnas y tipos<br/>get_data_version lee la versión del descriptor"]
 
-  RUN["<b>Run de MLflow</b><br/>params: version_datos · fechas de la partición · semilla · modelo · hiperparámetros<br/>tags: equipo · pregunta · git_commit · tipo_modelo<br/>métricas: test_mae · test_rmse · test_recall_vaciarse · test_f1_macro · train_silhouette · …<br/>artefactos: figuras · modelo · tablas de grupos"]
+  RUN["<b>Run de MLflow</b><br/>params: version_datos · fechas de la partición · semilla · modelo · hiperparámetros<br/>tags: equipo · pregunta · git_commit · tipo_modelo<br/>métricas: test_mae · test_rmse · test_recall_vaciarse · test_f1_macro · train_silhouette · …<br/>dataset input: datapackage, digest = version · artefactos: figuras · modelo · tablas de grupos · datapackage.json"]
 
-  COMMIT -- "make data escribe los Parquet y el manifiesto" --> DATA
-  DATA -. "hashes" .-> MAN
+  MAN -- "make data descarga, verifica bytes y hash y limpia" --> DATA
+  COMMIT -- "reglas de limpieza" --> DATA
   REQ ~~~ DATA
   DATA --> CHECK
   CHECK -- "train.py entrena y registra" --> RUN
-  MAN -. "param version_datos" .-> RUN
+  MAN -. "param version_datos · dataset input" .-> RUN
   COMMIT -. "tag git_commit" .-> RUN
   REQ -. "mismo entorno" .-> RUN
 

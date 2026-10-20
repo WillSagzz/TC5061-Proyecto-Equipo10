@@ -6,9 +6,10 @@ flowchart TB
   CSV["<b>1 · Fuente de datos</b><br/>24 CSV mensuales de viajes<br/>enlaces descubiertos en la<br/>página datos-abiertos de MiBici"]
   NOM["<b>1 · Fuente de datos</b><br/>Catálogo de estaciones<br/>nomenclatura_2026_09.csv"]
   CFG["<b>2 · Configuración (Git)</b><br/>mibici/config.py<br/>rango de fechas · cortes de la partición · semilla<br/>contrato de datos · reglas de limpieza · parámetros de P2 y P3"]
-  MAN["<b>2 · Versión de datos (Git)</b><br/>data_manifest.json<br/>versión · SHA-256 de cada CSV y Parquet · conteos<br/>(lo escribe la ingesta; cada cambio entra por PR)"]
+  MAN["<b>2 · Versión de datos (Git)</b><br/>datapackage.json · Frictionless Data Package<br/>version · un recurso por CSV y Parquet: URL · bytes · SHA-256 · codificación · esquema<br/>(lo escribe make snapshot; cada cambio entra por PR)"]
+  SNAP["<b>2 · Instantánea · make snapshot</b><br/>mibici/datapackage.py<br/>descubre enlaces · descarga · describe con frictionless<br/>limpia · escribe el descriptor · valida"]
 
-  INGEST["<b>3 · Ingesta · make data</b><br/>mibici/dataset.py<br/>descubre enlaces y descarga lo que falta<br/>detecta codificación · normaliza columnas y fechas<br/>limpia viajes · descarta datos personales · cruza con el catálogo"]
+  INGEST["<b>3 · Ingesta · make data</b><br/>mibici/dataset.py<br/>descarga las URL del descriptor · verifica bytes y SHA-256 antes de procesar<br/>valida el esquema con frictionless · normaliza columnas y fechas<br/>limpia viajes · descarta datos personales · comprueba los Parquet"]
 
   RAW[("<b>4 · Almacenamiento local</b><br/>data/raw<br/>CSV originales, tal como se descargan")]
   PROC[("<b>4 · Almacenamiento local</b><br/>data/processed<br/>meses.parquet · nomenclatura.parquet")]
@@ -22,15 +23,19 @@ flowchart TB
   LOCAL[("<b>7 · Backend local</b><br/>mlflow.db (SQLite) + mlartifacts/<br/>mlflow ui")]
   AZURE[("<b>7 · Backend en Azure (planeado)</b><br/>servidor MLflow en Container Apps<br/>PostgreSQL + Blob Storage")]
 
-  CSV --> INGEST
-  NOM --> INGEST
+  CSV --> SNAP
+  NOM --> SNAP
+  CFG --> SNAP
+  SNAP --> MAN
+  MAN -- "URL · bytes · hash · esquema" --> INGEST
+  CSV -. "descarga lo que falte" .-> INGEST
+  NOM -. "descarga lo que falte" .-> INGEST
   CFG --> INGEST
   INGEST --> RAW
   INGEST --> PROC
-  INGEST --> MAN
   PROC --> FEAT --> TRAIN
   CFG --> TRAIN
-  MAN -. "param version_datos" .-> TRAIN
+  MAN -. "param version_datos · dataset input · artefacto" .-> TRAIN
   TRAIN --> MODELS
   TRAIN --> CLIENT
   CLIENT --> LOCAL
