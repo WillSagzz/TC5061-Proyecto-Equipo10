@@ -1,6 +1,6 @@
 %% Arquitectura del sistema · Proyecto MiBici · TC5061 Equipo 10
 %% Fuente de la Figura 2 de la Entrega 01. Se exporta a arquitectura.png con mermaid-cli (ver docs/entregas/entrega01/README.md).
-%% Colores: azul = versionado en Git · naranja = almacenamiento local fuera de Git · verde punteado = servidor en Azure planeado.
+%% Colores: azul = versionado en Git · naranja = almacenamiento local fuera de Git · verde = servidor compartido en Azure (infra/).
 flowchart TB
 
   CSV["<b>1 · Fuente de datos</b><br/>24 CSV mensuales de viajes<br/>enlaces descubiertos en la<br/>página datos-abiertos de MiBici"]
@@ -21,7 +21,7 @@ flowchart TB
 
   CLIENT["<b>7 · Registro de experimentos</b><br/>cliente MLflow en train.py · experimento mibici-equipo10<br/>params · métricas · etiquetas · artefactos<br/>backend elegido con MLFLOW_TRACKING_URI (.env)"]
   LOCAL[("<b>7 · Backend local</b><br/>mlflow.db (SQLite) + mlartifacts/<br/>mlflow ui")]
-  AZURE[("<b>7 · Backend en Azure (planeado)</b><br/>servidor MLflow en Container Apps<br/>PostgreSQL + Blob Storage")]
+  AZURE[("<b>7 · Backend compartido en Azure</b><br/>servidor MLflow en Container Apps (infra/main.bicep)<br/>PostgreSQL + Blob Storage · usuario y contraseña por integrante")]
 
   CSV --> SNAP
   NOM --> SNAP
@@ -38,12 +38,12 @@ flowchart TB
   MAN -. "param version_datos · dataset input · artefacto" .-> TRAIN
   TRAIN --> MODELS
   TRAIN --> CLIENT
-  CLIENT --> LOCAL
-  CLIENT -.-> AZURE
+  CLIENT -- "sin .env" --> LOCAL
+  CLIENT -- "con .env" --> AZURE
 
   classDef git fill:#e8f1fb,stroke:#2b6cb0,stroke-width:1.5px,color:#1a365d
   classDef local fill:#fff7e6,stroke:#b7791f,stroke-width:1.5px,color:#5f370e
-  classDef cloud fill:#e6fffa,stroke:#2c7a7b,stroke-width:1.5px,color:#234e52,stroke-dasharray:6 4
+  classDef cloud fill:#e6fffa,stroke:#2c7a7b,stroke-width:1.5px,color:#234e52
   class CFG,MAN git
   class RAW,PROC,MODELS,LOCAL local
   class AZURE cloud

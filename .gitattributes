@@ -1,0 +1,7 @@
+# Archivos que deben salir del checkout con LF aunque Git esté configurado con autocrlf=true
+# (Windows): bash no acepta CRLF ("set: pipefail: invalid option name") y el script de arranque
+# del servidor MLflow va embebido en la plantilla de Bicep.
+*.sh text eol=lf
+*.bicep text eol=lf
+*.bicepparam text eol=lf
+Makefile text eol=lf

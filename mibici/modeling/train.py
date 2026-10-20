@@ -39,6 +39,7 @@ from mibici.config import (
     MIBICI_DATA_PAGE,
     MLFLOW_ARTIFACTS_DIR,
     MLFLOW_EXPERIMENT_NAME,
+    MLFLOW_RUN_USER,
     MLFLOW_TRACKING_URI,
     MODELS_DIR,
     P3_K_VALUES,
@@ -118,7 +119,7 @@ def _setup_mlflow() -> None:
 def _start_run(question: str, run_name: str, model_type: str = "baseline"):
     """Abre un run con las etiquetas y los parámetros comunes a todas las preguntas.
 
-    Etiquetas: equipo, pregunta y commit de Git. Parámetros: fechas de la partición,
+    Etiquetas: equipo, usuario que lo ejecuta, pregunta y commit de Git. Parámetros: fechas de la partición,
     versión de los datos y semilla. Además registra el conjunto de datos como entrada del
     run (pestaña *datasets* de MLflow), con la versión del descriptor como huella y el portal
     de MiBici como origen, y adjunta ``datapackage.json`` como artefacto.
@@ -137,6 +138,7 @@ def _start_run(question: str, run_name: str, model_type: str = "baseline"):
         mlflow.set_tags(
             {
                 "equipo": TEAM,
+                "usuario": MLFLOW_RUN_USER,
                 "pregunta": question,
                 "git_commit": commit,
                 "git_cambios_sin_commit": str(uncommitted_changes),

@@ -1,0 +1,9 @@
+# Formato de infra/users.txt (archivo LOCAL de quien administra; no se versiona).
+# Una línea por persona: usuario,rol
+#   editor -> recibe el rol "editores": EDIT en todos los experimentos y modelos, presentes y futuros
+#   lector -> solo lectura (permiso por defecto READ): para quien revisa la entrega
+# `make infra-users` crea los que falten y asigna el rol; `admin` se gestiona aparte.
+# Cópialo como users.txt y sustituye los ejemplos por los usuarios reales del equipo.
+persona-uno,editor
+persona-dos,editor
+quien-revisa,lector

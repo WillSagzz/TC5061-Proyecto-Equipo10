@@ -1,4 +1,5 @@
 from datetime import date
+import getpass
 import os
 from pathlib import Path
 
@@ -97,6 +98,12 @@ MLFLOW_EXPERIMENT_NAME = f"mibici-{TEAM}"
 # servidor de MLflow, definir MLFLOW_TRACKING_URI en el archivo .env.
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
 MLFLOW_ARTIFACTS_DIR = PROJ_ROOT / "mlartifacts"
+# Quién ejecutó el run: el usuario del servidor compartido (MLFLOW_TRACKING_USERNAME en .env) o,
+# en modo local, el usuario del sistema operativo. train.py lo registra como etiqueta `usuario`.
+try:
+    MLFLOW_RUN_USER = os.getenv("MLFLOW_TRACKING_USERNAME") or getpass.getuser()
+except (KeyError, OSError, ImportError):  # contenedores o CI sin usuario conocido
+    MLFLOW_RUN_USER = "desconocido"
 
 # P1 y P2: variables históricas de la Tabla 5 de la propuesta (features.py). Se expresan en
 # horas; P2 las convierte a intervalos (1 intervalo, 24 h = 8 intervalos y 7 días = 56).

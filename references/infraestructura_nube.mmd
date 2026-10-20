@@ -1,0 +1,43 @@
+%% Infraestructura en la nube · Servidor MLflow compartido · Proyecto MiBici · TC5061 Equipo 10
+%% Fuente de la figura de infra/README.md y del README. Se exporta a infraestructura_nube.png con mermaid-cli (ver docs/entregas/entrega01/README.md).
+%% No contiene la URL del servidor, usuarios ni secretos: solo la forma de la arquitectura. Todo lo verde se crea con infra/main.bicep.
+flowchart LR
+
+  subgraph EQUIPO["Integrantes · laptops · sin cuenta de Azure"]
+    direction TB
+    DEV["<b>Cliente MLflow 3.4 (train.py)</b><br/>make train · make infra-check<br/>.env: URL · usuario · contraseña<br/>etiqueta usuario en cada run"]
+    UI["<b>Navegador</b><br/>interfaz de MLflow<br/>usuario y contraseña"]
+    REV["<b>Quien califica</b><br/>usuario de solo lectura"]
+  end
+
+  subgraph ADMIN["Quien administra · az login"]
+    direction TB
+    MAKE["<b>make infra-*</b><br/>Bicep: infra/main.bicep<br/>archivos locales fuera de Git:<br/>.secrets.env · users.txt · .users.env"]
+  end
+
+  subgraph RG["Azure · Resource Group propio (rg-mibici-equipo10) · mexicocentral"]
+    direction TB
+    subgraph CAE["Container Apps environment (Consumption) + Log Analytics"]
+      APP["<b>Container App mlflow</b><br/>imagen oficial ghcr.io/mlflow/mlflow:&lt;versión&gt;-full<br/>mlflow server --app-name basic-auth<br/>ingress HTTPS · allowed hosts = FQDN · 1 réplica · 0.5 vCPU / 1 GiB<br/>secrets: cadena de PostgreSQL · contraseña de admin · clave CSRF"]
+    end
+    ID["<b>Managed Identity</b><br/>rol Storage Blob Data Contributor"]
+    PG[("<b>Azure Database for PostgreSQL</b><br/>Flexible Server B1ms · PostgreSQL 16 · 32 GB<br/>experimentos · runs · métricas · usuarios y permisos<br/>SSL obligatorio · firewall: solo servicios de Azure")]
+    BLOB[("<b>Azure Blob Storage</b><br/>contenedor privado mlflow-artifacts<br/>modelos · figuras · tablas<br/>sin claves compartidas")]
+  end
+
+  DEV -- "HTTPS · API REST de MLflow<br/>params · métricas · artefactos (vía servidor)" --> APP
+  UI -- "HTTPS" --> APP
+  REV -- "HTTPS · solo lectura" --> APP
+  APP -- "psycopg2 · sslmode=require" --> PG
+  APP -- "wasbs:// con Managed Identity" --> BLOB
+  APP -. "usa" .-> ID
+  ID -. "RBAC" .-> BLOB
+  MAKE -- "az deployment group create" --> RG
+  MAKE -- "API de auth de MLflow:<br/>usuarios y permisos" --> APP
+
+  classDef persona fill:#f4f4f5,stroke:#52525b,stroke-width:1.5px,color:#27272a
+  classDef admin fill:#e8f1fb,stroke:#2b6cb0,stroke-width:1.5px,color:#1a365d
+  classDef cloud fill:#e6fffa,stroke:#2c7a7b,stroke-width:1.5px,color:#234e52
+  class DEV,UI,REV persona
+  class MAKE admin
+  class APP,ID,PG,BLOB cloud
