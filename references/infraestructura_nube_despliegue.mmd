@@ -1,0 +1,36 @@
+%% Despliegue y administración del servidor MLflow compartido · Proyecto MiBici · TC5061 Equipo 10
+%% Fuente de la figura de infra/README.md. Se exporta a infraestructura_nube_despliegue.png con mermaid-cli (ver docs/entregas/entrega01/README.md).
+%% Sin URL, usuarios ni secretos.
+sequenceDiagram
+  autonumber
+  actor Admin as Quien administra<br/>(az login)
+  participant Make as make infra-*<br/>Makefile + scripts
+  participant Local as Archivos locales<br/>fuera de Git
+  participant ARM as Azure Resource Manager<br/>Bicep (infra/main.bicep)
+  participant RG as rg-mibici-equipo10<br/>recursos
+  participant App as Container App<br/>mlflow server · basic-auth
+  participant PG as PostgreSQL
+
+  Admin->>Make: make infra-secrets
+  Make->>Local: escribe .secrets.env (contraseña de PostgreSQL, de admin, clave CSRF)
+  Admin->>Make: make infra-deploy
+  Make->>Local: lee .secrets.env
+  Make->>ARM: az deployment group create (main.bicep + main.bicepparam)
+  ARM->>RG: crea o actualiza: Log Analytics · identidad · Storage · PostgreSQL · entorno · Container App
+  RG-->>ARM: 12 recursos, idempotente
+  ARM-->>Make: URL del servidor
+  App->>PG: primer arranque: crea las tablas y el usuario admin
+  Admin->>Make: make infra-users
+  Make->>Local: lee users.txt (usuario,rol) y .secrets.env
+  Make->>App: API de auth: crea usuarios, el experimento del equipo y permisos EDIT (como admin)
+  App->>PG: guarda usuarios y permisos
+  Make->>Local: escribe contraseñas iniciales en .users.env
+  Admin-->>Admin: entrega URL, usuario y contraseña a cada persona por un canal privado
+
+  Note over Admin,PG: Cambiar la imagen o el tamaño: editar main.bicepparam y repetir make infra-deploy. Los runs y usuarios persisten en PostgreSQL.
+
+  actor Dev as Integrante
+  Dev->>App: make mlflow-password (cambia su propia contraseña)
+  App->>PG: actualiza el hash
+  Admin->>Make: make infra-reset-password USUARIO=... (si alguien la olvida)
+  Make->>App: API de auth como admin

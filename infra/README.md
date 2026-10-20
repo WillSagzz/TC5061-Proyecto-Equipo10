@@ -29,11 +29,33 @@ en privado y vive en archivos locales excluidos de Git (`.env`, `infra/users.txt
 
 ## Arquitectura
 
-![Arquitectura del servidor MLflow compartido en Azure](../references/infraestructura_nube.png)
+Tres diagramas, con fuente en Mermaid en [`references/`](../references/) y exportados a PNG
+con el mismo comando que los demás diagramas del proyecto. Ninguno contiene la URL del
+servidor, usuarios ni secretos. El servidor es el componente 7 de la
+[arquitectura general del proyecto](../references/arquitectura.png): el *backend* compartido
+al que `train.py` registra cuando existe un `.env`.
 
-Fuente en Mermaid: [`references/infraestructura_nube.mmd`](../references/infraestructura_nube.mmd).
+### Componentes
+
+![Componentes del servidor MLflow compartido en Azure](../references/infraestructura_nube.png)
+
+Fuente: [`references/infraestructura_nube.mmd`](../references/infraestructura_nube.mmd).
 Todo lo verde lo crea [`main.bicep`](main.bicep) en un solo despliegue; lo gris y lo azul son
 personas y archivos locales.
+
+### Flujo de un *run*
+
+![Flujo de un run contra el servidor compartido](../references/infraestructura_nube_run.png)
+
+Fuente: [`references/infraestructura_nube_run.mmd`](../references/infraestructura_nube_run.mmd).
+
+### Despliegue y administración
+
+![Despliegue y administración del servidor](../references/infraestructura_nube_despliegue.png)
+
+Fuente: [`references/infraestructura_nube_despliegue.mmd`](../references/infraestructura_nube_despliegue.mmd).
+
+### Cómo leerlos
 
 **Flujo de un *run*.** `train.py` en la laptop de un integrante habla con el servidor por HTTPS
 usando la API REST de MLflow, autenticado con el usuario y la contraseña del `.env`. El
