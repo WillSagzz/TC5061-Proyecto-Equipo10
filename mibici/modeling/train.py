@@ -16,6 +16,8 @@ import subprocess
 import joblib
 from loguru import logger
 import mlflow
+from mlflow.data.http_dataset_source import HTTPDatasetSource
+from mlflow.data.meta_dataset import MetaDataset
 import numpy as np
 from sklearn.metrics import (
     average_precision_score,
@@ -31,8 +33,10 @@ import typer
 
 from mibici.config import (
     DATA_END,
+    DATAPACKAGE_PATH,
     DAY_PERIODS,
     FIGURES_DIR,
+    MIBICI_DATA_PAGE,
     MLFLOW_ARTIFACTS_DIR,
     MLFLOW_EXPERIMENT_NAME,
     MLFLOW_TRACKING_URI,
@@ -115,7 +119,9 @@ def _start_run(question: str, run_name: str, model_type: str = "baseline"):
     """Abre un run con las etiquetas y los parámetros comunes a todas las preguntas.
 
     Etiquetas: equipo, pregunta y commit de Git. Parámetros: fechas de la partición,
-    versión de los datos y semilla.
+    versión de los datos y semilla. Además registra el conjunto de datos como entrada del
+    run (pestaña *datasets* de MLflow), con la versión del descriptor como huella y el portal
+    de MiBici como origen, y adjunta ``datapackage.json`` como artefacto.
 
     Args:
         question: ``"P1"``, ``"P2"`` o ``"P3"``.
@@ -126,6 +132,7 @@ def _start_run(question: str, run_name: str, model_type: str = "baseline"):
     commit, uncommitted_changes = _get_git_commit()
     if uncommitted_changes:
         logger.warning("Hay cambios sin commit: haz commit antes del run definitivo")
+    data_version = get_data_version()
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tags(
             {
@@ -142,10 +149,19 @@ def _start_run(question: str, run_name: str, model_type: str = "baseline"):
                 "inicio_validacion": VALIDATION_START,
                 "inicio_prueba": TEST_START,
                 "fin_datos": DATA_END,
-                "version_datos": get_data_version(),
+                "version_datos": data_version,
                 "semilla": RANDOM_SEED,
             }
         )
+        mlflow.log_input(
+            MetaDataset(
+                source=HTTPDatasetSource(MIBICI_DATA_PAGE),
+                name=DATAPACKAGE_PATH.stem,
+                digest=data_version,
+            ),
+            context="entrenamiento",
+        )
+        mlflow.log_artifact(str(DATAPACKAGE_PATH), artifact_path="datos")
         yield run
         logger.success(f"Run '{run_name}' registrado en '{MLFLOW_EXPERIMENT_NAME}'")
 
