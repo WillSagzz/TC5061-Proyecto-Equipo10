@@ -18,7 +18,7 @@ sequenceDiagram
   Train->>App: POST log-batch (params y métricas)
   App->>PG: INSERT params y métricas
   Train->>App: POST upload-artifact (modelo .joblib, figuras, CSV)
-  App->>Blob: PUT con la identidad administrada (wasbs://)
+  App->>Blob: PUT con Managed Identity (wasbs://)
   Blob-->>App: OK
   Train->>App: POST runs/update (FINISHED)
   App->>PG: UPDATE run

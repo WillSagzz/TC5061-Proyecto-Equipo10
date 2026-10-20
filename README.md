@@ -245,10 +245,10 @@ Git y el cilindro verde es el servidor MLflow compartido del equipo en Azure, de
 
 ![Arquitectura del servidor MLflow compartido en Azure](references/infraestructura_nube.png)
 
-El componente 7 en modo compartido es un MLflow Tracking Server propio en Azure, en un grupo de
-recursos exclusivo del proyecto: la imagen oficial de MLflow en Azure Container Apps (HTTPS y
+El componente 7 en modo compartido es un MLflow Tracking Server propio en Azure, en un Resource Group
+exclusivo del proyecto: la imagen oficial de MLflow en Azure Container Apps (HTTPS y
 autenticación básica), los metadatos y los usuarios en Azure Database for PostgreSQL y los
-artefactos en Azure Blob Storage, a los que el servidor entra con una identidad administrada. Las
+artefactos en Azure Blob Storage, a los que el servidor entra con una Managed Identity. Las
 laptops solo necesitan la URL, un usuario y una contraseña en `.env`; nunca credenciales de Azure.
 Todo se define en Bicep en [`infra/`](infra/) y se despliega con `make infra-deploy`; el detalle de
 la arquitectura, el acceso y la operación está en [`infra/README.md`](infra/README.md) y la fuente
@@ -395,7 +395,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
 ├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
-│   ├── main.bicep        <- Container Apps + PostgreSQL + Blob Storage + identidad administrada
+│   ├── main.bicep        <- Container Apps + PostgreSQL + Blob Storage + Managed Identity
 │   ├── main.bicepparam   <- Parámetros no secretos (región, imagen); los secretos salen de infra/.secrets.env (fuera de Git)
 │   ├── users.example.txt <- Formato de la lista de usuarios; la lista real (users.txt) no se versiona
 │   └── scripts           <- generate_secrets.sh, create_users.py, change_password.py, check_server.py

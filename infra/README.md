@@ -11,10 +11,10 @@ despliega y mantiene quien administra la suscripción**.
 |---|---|---|
 | Servidor MLflow | **Azure Container Apps** (plan Consumption, 0.5 vCPU / 1 GiB, una réplica siempre encendida) | Imagen oficial `ghcr.io/mlflow/mlflow:<versión>-full`; HTTPS con certificado incluido; sin Dockerfile ni registro propio. |
 | Metadatos (experimentos, *runs*, usuarios) | **Azure Database for PostgreSQL Flexible Server** (Burstable B1ms, PostgreSQL 16, 32 GB) | SSL obligatorio; firewall solo para servicios de Azure. |
-| Artefactos (modelos, figuras, tablas) | **Azure Blob Storage** (Standard LRS, contenedor privado `mlflow-artifacts`) | El servidor entra con una **identidad administrada** (rol *Storage Blob Data Contributor*); la cuenta tiene las claves compartidas deshabilitadas. |
-| Logs | Log Analytics | Obligatorio para el entorno de Container Apps; `make infra-logs`. |
+| Artefactos (modelos, figuras, tablas) | **Azure Blob Storage** (Standard LRS, contenedor privado `mlflow-artifacts`) | El servidor entra con una **Managed Identity** (rol *Storage Blob Data Contributor*); la cuenta tiene las claves compartidas deshabilitadas. |
+| Logs | Log Analytics | Obligatorio para el Container Apps environment; `make infra-logs`. |
 
-Todo vive en un grupo de recursos propio del proyecto, `rg-mibici-equipo10`, en
+Todo vive en un Resource Group propio del proyecto, `rg-mibici-equipo10`, en
 `mexicocentral` (Querétaro): es la región más cercana al equipo y sus precios son equivalentes
 a los de Estados Unidos (PostgreSQL B1ms 13.65 USD/mes frente a 14.02 en `centralus`; Container
 Apps y Blob entre 8 % y 24 % más caros, pero son centavos). La suscripción tiene restringido
@@ -60,7 +60,7 @@ Fuente: [`references/infraestructura_nube_despliegue.mmd`](../references/infraes
 **Flujo de un *run*.** `train.py` en la laptop de un integrante habla con el servidor por HTTPS
 usando la API REST de MLflow, autenticado con el usuario y la contraseña del `.env`. El
 servidor escribe parámetros, métricas y etiquetas en PostgreSQL y recibe los artefactos
-(modelos, figuras, tablas) y los guarda en Blob Storage con su identidad administrada; la
+(modelos, figuras, tablas) y los guarda en Blob Storage con su Managed Identity; la
 laptop nunca toca Azure directamente. La interfaz web es el mismo servidor, con las mismas
 credenciales, y quien califica entra con un usuario que solo puede leer.
 
@@ -72,9 +72,9 @@ redeploy.
 
 **Fronteras de seguridad.** Solo el servidor está expuesto a internet, con TLS del ingress y
 autenticación básica en cada petición (el único punto público es `/health`). PostgreSQL exige
-SSL y solo acepta conexiones desde servicios de Azure; la cuenta de almacenamiento tiene las
+SSL y solo acepta conexiones desde servicios de Azure; la Storage Account tiene las
 claves compartidas deshabilitadas y el acceso público bloqueado, de modo que el único camino a
-los artefactos es la identidad administrada del servidor. Los secretos del contenedor (cadena
+los artefactos es la Managed Identity del servidor. Los secretos del contenedor (cadena
 de PostgreSQL, contraseña inicial de `admin`, clave CSRF) viven como *secrets* de la Container
 App y nunca en el repositorio.
 
@@ -221,11 +221,11 @@ Crear usuarios exige las credenciales de `admin`: nadie puede registrarse solo.
 | Cambiar de versión de MLflow | `mlflowImageTag` en [`main.bicepparam`](main.bicepparam) (variante `-full`, ≥ `v3.14.0-full`) y `make infra-deploy` |
 | Más CPU o memoria | `containerCpu` y `containerMemory` en `main.bicepparam` (pares válidos: 0.5/1Gi, 0.75/1.5Gi, 1/2Gi, ...) y `make infra-deploy` |
 | Cualquier otro cambio | Editar [`main.bicep`](main.bicep), `make infra-plan` y luego `make infra-deploy`; Bicep es idempotente y los *runs* y usuarios persisten en PostgreSQL |
-| Apagar todo | `make infra-destroy` borra el grupo de recursos completo (pide confirmación). Los *runs* se pierden: exporta antes lo que haga falta |
+| Apagar todo | `make infra-destroy` borra el Resource Group completo (pide confirmación). Los *runs* se pierden: exporta antes lo que haga falta |
 
 `make infra-plan` muestra siempre una "modificación" en la Container App aunque no haya
 cambios: el *what-if* no puede resolver el dominio del entorno ni el *client id* de la
-identidad antes de desplegar y los imprime como expresiones. Es ruido conocido.
+Managed Identity antes de desplegar y los imprime como expresiones. Es ruido conocido.
 
 ### Decisiones de configuración que conviene conocer
 
@@ -274,7 +274,7 @@ identidad antes de desplegar y los imprime como expresiones. Es ruido conocido.
 - **MLflow propio y no Azure Machine Learning.** Microsoft no ofrece un servidor MLflow
   administrado; su alternativa es usar un *workspace* de Azure ML como *tracker*, que muestra
   los *runs* en Azure ML Studio (no en la interfaz de MLflow), da soporte oficial hasta MLflow
-  2.16 y exige una identidad de Entra por integrante. El curso pide capturas de la interfaz de
+  2.16 y exige una identidad de Microsoft Entra ID por integrante. El curso pide capturas de la interfaz de
   MLflow y el repositorio fija `mlflow==3.4.0`.
 - **Container Apps + PostgreSQL + Blob** es la combinación que documenta la propia guía de
   MLflow para Azure y la que usan los despliegues publicados en 2025 y 2026. App Service solo

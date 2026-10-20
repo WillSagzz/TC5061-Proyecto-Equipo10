@@ -7,7 +7,7 @@ sequenceDiagram
   participant Make as make infra-*<br/>Makefile + scripts
   participant Local as Archivos locales<br/>fuera de Git
   participant ARM as Azure Resource Manager<br/>Bicep (infra/main.bicep)
-  participant RG as rg-mibici-equipo10<br/>recursos
+  participant RG as Resource Group<br/>rg-mibici-equipo10
   participant App as Container App<br/>mlflow server · basic-auth
   participant PG as PostgreSQL
 
@@ -16,7 +16,7 @@ sequenceDiagram
   Admin->>Make: make infra-deploy
   Make->>Local: lee .secrets.env
   Make->>ARM: az deployment group create (main.bicep + main.bicepparam)
-  ARM->>RG: crea o actualiza: Log Analytics · identidad · Storage · PostgreSQL · entorno · Container App
+  ARM->>RG: crea o actualiza: Log Analytics · Managed Identity · Storage Account · PostgreSQL Flexible Server · Container Apps environment · Container App
   RG-->>ARM: 12 recursos, idempotente
   ARM-->>Make: URL del servidor
   App->>PG: primer arranque: crea las tablas y el usuario admin

@@ -15,12 +15,12 @@ flowchart LR
     MAKE["<b>make infra-*</b><br/>Bicep: infra/main.bicep<br/>archivos locales fuera de Git:<br/>.secrets.env · users.txt · .users.env"]
   end
 
-  subgraph RG["Azure · grupo de recursos propio (rg-mibici-equipo10) · mexicocentral"]
+  subgraph RG["Azure · Resource Group propio (rg-mibici-equipo10) · mexicocentral"]
     direction TB
     subgraph CAE["Container Apps environment (Consumption) + Log Analytics"]
       APP["<b>Container App mlflow</b><br/>imagen oficial ghcr.io/mlflow/mlflow:&lt;versión&gt;-full<br/>mlflow server --app-name basic-auth<br/>ingress HTTPS · allowed hosts = FQDN · 1 réplica · 0.5 vCPU / 1 GiB<br/>secrets: cadena de PostgreSQL · contraseña de admin · clave CSRF"]
     end
-    ID["<b>Identidad administrada</b><br/>rol Storage Blob Data Contributor"]
+    ID["<b>Managed Identity</b><br/>rol Storage Blob Data Contributor"]
     PG[("<b>Azure Database for PostgreSQL</b><br/>Flexible Server B1ms · PostgreSQL 16 · 32 GB<br/>experimentos · runs · métricas · usuarios y permisos<br/>SSL obligatorio · firewall: solo servicios de Azure")]
     BLOB[("<b>Azure Blob Storage</b><br/>contenedor privado mlflow-artifacts<br/>modelos · figuras · tablas<br/>sin claves compartidas")]
   end
@@ -29,7 +29,7 @@ flowchart LR
   UI -- "HTTPS" --> APP
   REV -- "HTTPS · solo lectura" --> APP
   APP -- "psycopg2 · sslmode=require" --> PG
-  APP -- "wasbs:// con la identidad" --> BLOB
+  APP -- "wasbs:// con Managed Identity" --> BLOB
   APP -. "usa" .-> ID
   ID -. "RBAC" .-> BLOB
   MAKE -- "az deployment group create" --> RG
