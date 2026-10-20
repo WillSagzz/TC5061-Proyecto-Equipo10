@@ -211,6 +211,11 @@ identidad antes de desplegar y los imprime como expresiones. Es ruido conocido.
 - **`MLFLOW_SERVER_ALLOWED_HOSTS`.** Desde MLflow 3.5 el servidor rechaza con 403 las
   peticiones cuya cabecera `Host` no esté en la lista; el template la llena con el FQDN de la
   Container App y lo resuelve solo.
+- **`MLFLOW_SERVER_CORS_ALLOWED_ORIGINS`.** El mismo middleware bloquea los POST cuya cabecera
+  `Origin` no esté en la lista, y por defecto solo confía en `localhost`. Sin esta variable
+  la propia interfaz web falla ("Request error" en la lista de *runs*, "Failed to load chart
+  data" en los paneles) aunque la API funcione desde `train.py`, porque el navegador manda
+  `Origin` y los clientes de Python no. El template la fija al origen del propio servidor.
 - **`MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false`.** La cola de trabajos del servidor (MLflow
   ≥ 3.15) usa `/dev/shm`; no se necesita para *tracking* y así se evita un modo de falla
   conocido en contenedores con poca memoria compartida.

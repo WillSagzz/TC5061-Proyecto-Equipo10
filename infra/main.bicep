@@ -224,20 +224,12 @@ var appFqdn = '${appName}.${containerEnv.properties.defaultDomain}'
 var backendStoreUri = 'postgresql://${postgresAdminUser}:${postgresPassword}@${postgres.properties.fullyQualifiedDomainName}:5432/${postgresDatabaseName}?sslmode=require'
 var artifactsDestination = 'wasbs://${artifactsContainerName}@${storage.name}.blob.${az.environment().suffixes.storage}'
 
-// Arranque del servidor. Escribe el ini de basic-auth (los usuarios viven en la misma base
-// PostgreSQL que el tracking) y lanza `mlflow server`. Container Apps inyecta variables de
-// OpenTelemetry que desvían el tracing de MLflow; se quitan. La cola de trabajos del servidor
-// (que usa /dev/shm) no se necesita y se apaga por variable de entorno.
-var startupScript = '''
-set -euo pipefail
-unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_EXPORTER_OTLP_METRICS_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
-printf '[mlflow]\ndefault_permission = READ\ndatabase_uri = %s\nadmin_username = admin\n' "$MLFLOW_BACKEND_STORE_URI" > /tmp/basic_auth.ini
-exec mlflow server \
-  --backend-store-uri "$MLFLOW_BACKEND_STORE_URI" \
-  --artifacts-destination "$MLFLOW_ARTIFACTS_DESTINATION" \
-  --host 0.0.0.0 --port 5000 --workers 1 \
-  --app-name basic-auth
-'''
+// Arranque del servidor, en UNA sola línea a propósito: un salto de línea de Windows (CRLF)
+// dentro de un script multilínea rompe bash ("set: pipefail: invalid option name"). Escribe el
+// ini de basic-auth (los usuarios viven en la misma base PostgreSQL que el tracking) y lanza
+// `mlflow server`. Container Apps inyecta variables de OpenTelemetry que desvían el tracing de
+// MLflow; se quitan. La cola de trabajos del servidor (/dev/shm) se apaga por variable de entorno.
+var startupScript = 'set -eu; unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_EXPORTER_OTLP_METRICS_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT; printf "[mlflow]\\ndefault_permission = READ\\ndatabase_uri = %s\\nadmin_username = admin\\n" "$MLFLOW_BACKEND_STORE_URI" > /tmp/basic_auth.ini; exec mlflow server --backend-store-uri "$MLFLOW_BACKEND_STORE_URI" --artifacts-destination "$MLFLOW_ARTIFACTS_DESTINATION" --host 0.0.0.0 --port 5000 --workers 1 --app-name basic-auth'
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
@@ -314,6 +306,13 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               // esta lista (403 "Invalid Host header"). /health está exento.
               name: 'MLFLOW_SERVER_ALLOWED_HOSTS'
               value: '${appFqdn},${appFqdn}:*,localhost,localhost:*,127.0.0.1,127.0.0.1:*'
+            }
+            {
+              // El middleware bloquea los POST del navegador cuya cabecera Origin no esté en la
+              // lista (solo confía en localhost por defecto): la propia UI fallaba con 403
+              // "Cross-origin request blocked" en runs/search y traces/metrics.
+              name: 'MLFLOW_SERVER_CORS_ALLOWED_ORIGINS'
+              value: 'https://${appFqdn}'
             }
             {
               name: 'MLFLOW_SERVER_ENABLE_JOB_EXECUTION'
