@@ -229,7 +229,9 @@ var artifactsDestination = 'wasbs://${artifactsContainerName}@${storage.name}.bl
 // ini de basic-auth (los usuarios viven en la misma base PostgreSQL que el tracking) y lanza
 // `mlflow server`. Container Apps inyecta variables de OpenTelemetry que desvían el tracing de
 // MLflow; se quitan. La cola de trabajos del servidor (/dev/shm) se apaga por variable de entorno.
-var startupScript = 'set -eu; unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_EXPORTER_OTLP_METRICS_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT; printf "[mlflow]\\ndefault_permission = READ\\ndatabase_uri = %s\\nadmin_username = admin\\n" "$MLFLOW_BACKEND_STORE_URI" > /tmp/basic_auth.ini; exec mlflow server --backend-store-uri "$MLFLOW_BACKEND_STORE_URI" --artifacts-destination "$MLFLOW_ARTIFACTS_DESTINATION" --host 0.0.0.0 --port 5000 --workers 1 --app-name basic-auth'
+// auth_cache_ttl_seconds: sin caché, basic-auth recalcula el hash PBKDF2 de la contraseña en CADA
+// petición (~0.5 s con 0.5 vCPU) y la interfaz, que lanza decenas en paralelo, tarda segundos.
+var startupScript = 'set -eu; unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_EXPORTER_OTLP_METRICS_ENDPOINT OTEL_EXPORTER_OTLP_LOGS_ENDPOINT; printf "[mlflow]\\ndefault_permission = READ\\ndatabase_uri = %s\\nadmin_username = admin\\nauth_cache_ttl_seconds = 60\\n" "$MLFLOW_BACKEND_STORE_URI" > /tmp/basic_auth.ini; exec mlflow server --backend-store-uri "$MLFLOW_BACKEND_STORE_URI" --artifacts-destination "$MLFLOW_ARTIFACTS_DESTINATION" --host 0.0.0.0 --port 5000 --workers 1 --app-name basic-auth'
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName

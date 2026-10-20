@@ -221,6 +221,12 @@ identidad antes de desplegar y los imprime como expresiones. Es ruido conocido.
   conocido en contenedores con poca memoria compartida.
 - **Variables `OTEL_*`.** Container Apps las inyecta y desvían el *tracing* de MLflow; el
   script de arranque las elimina.
+- **`auth_cache_ttl_seconds = 60`** en la autenticación básica. Sin caché, el servidor recalcula
+  el hash PBKDF2 de la contraseña en cada petición (unos 0.5 s con 0.5 vCPU) y, como la
+  interfaz lanza decenas en paralelo sobre un solo *worker*, cada pantalla tardaba varios
+  segundos. Con el caché, una credencial verificada vale 60 s: las peticiones autenticadas
+  bajaron de 0.8 s a 0.3 s y una ráfaga de ocho, de 6.8 s a 0.6 s. El único efecto es que
+  una contraseña recién cambiada sigue siendo válida hasta un minuto.
 - **`default_permission = READ`** en la autenticación básica; los permisos `EDIT` son
   explícitos por usuario y experimento (`create_users.py`). La base de usuarios es la misma
   PostgreSQL del *tracking* (tablas propias), así que sobrevive a redeploys.
