@@ -27,6 +27,35 @@ las contraseñas y los secretos del despliegue. El repositorio es público; todo
 en privado y vive en archivos locales excluidos de Git (`.env`, `infra/users.txt`,
 `infra/.users.env`, `infra/.secrets.env`).
 
+## Arquitectura
+
+![Arquitectura del servidor MLflow compartido en Azure](../references/infraestructura_nube.png)
+
+Fuente en Mermaid: [`references/infraestructura_nube.mmd`](../references/infraestructura_nube.mmd).
+Todo lo verde lo crea [`main.bicep`](main.bicep) en un solo despliegue; lo gris y lo azul son
+personas y archivos locales.
+
+**Flujo de un *run*.** `train.py` en la laptop de un integrante habla con el servidor por HTTPS
+usando la API REST de MLflow, autenticado con el usuario y la contraseña del `.env`. El
+servidor escribe parámetros, métricas y etiquetas en PostgreSQL y recibe los artefactos
+(modelos, figuras, tablas) y los guarda en Blob Storage con su identidad administrada; la
+laptop nunca toca Azure directamente. La interfaz web es el mismo servidor, con las mismas
+credenciales, y quien califica entra con un usuario que solo puede leer.
+
+**Flujo de administración.** Quien administra despliega o actualiza los recursos con
+`make infra-deploy` (Bicep, con los secretos que viven en archivos locales) y da de alta
+usuarios y permisos con `make infra-users`, que usa la API de autenticación del propio MLflow.
+Los usuarios y sus permisos se guardan en la misma PostgreSQL, así que sobreviven a cualquier
+redeploy.
+
+**Fronteras de seguridad.** Solo el servidor está expuesto a internet, con TLS del ingress y
+autenticación básica en cada petición (el único punto público es `/health`). PostgreSQL exige
+SSL y solo acepta conexiones desde servicios de Azure; la cuenta de almacenamiento tiene las
+claves compartidas deshabilitadas y el acceso público bloqueado, de modo que el único camino a
+los artefactos es la identidad administrada del servidor. Los secretos del contenedor (cadena
+de PostgreSQL, contraseña inicial de `admin`, clave CSRF) viven como *secrets* de la Container
+App y nunca en el repositorio.
+
 ---
 
 ## Parte 1 · Para integrantes: conectarse y usar el servidor

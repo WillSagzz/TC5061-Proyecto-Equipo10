@@ -241,6 +241,19 @@ Git y el cilindro verde es el servidor MLflow compartido del equipo en Azure, de
 | 7 | Registro de experimentos | MLflow Tracking: local (`mlflow.db` y `mlartifacts/`) o el servidor compartido en Azure (Container Apps, PostgreSQL y Blob Storage, desplegado con Bicep desde `infra/`), según `MLFLOW_TRACKING_URI` | Herramienta del curso; misma interfaz en ambos modos; el servidor compartido deja los *runs* de todo el equipo en un solo lugar. |
 | — | Orquestación | `Makefile` (`data`, `train`) | Un grafo de dos pasos no justifica un orquestador. |
 
+### Infraestructura en la nube
+
+![Arquitectura del servidor MLflow compartido en Azure](references/infraestructura_nube.png)
+
+El componente 7 en modo compartido es un MLflow Tracking Server propio en Azure, en un grupo de
+recursos exclusivo del proyecto: la imagen oficial de MLflow en Azure Container Apps (HTTPS y
+autenticación básica), los metadatos y los usuarios en Azure Database for PostgreSQL y los
+artefactos en Azure Blob Storage, a los que el servidor entra con una identidad administrada. Las
+laptops solo necesitan la URL, un usuario y una contraseña en `.env`; nunca credenciales de Azure.
+Todo se define en Bicep en [`infra/`](infra/) y se despliega con `make infra-deploy`; el detalle de
+la arquitectura, el acceso y la operación está en [`infra/README.md`](infra/README.md) y la fuente
+del diagrama en [`references/infraestructura_nube.mmd`](references/infraestructura_nube.mmd).
+
 El *pipeline* por pregunta y la justificación de cada herramienta con las lecturas del curso
 están en las secciones [5](docs/entregas/entrega01/secciones/05-pipeline.md) y
 [7](docs/entregas/entrega01/secciones/07-arquitectura.md) de la propuesta.
@@ -391,7 +404,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 ├── notebooks             <- Solo exploración: `1.0-gsg-descarga-dataset.ipynb` y `2.0-gsg-exploracion-variables.ipynb`
 │
-├── references            <- ML Canvas (html, pdf y png) y diagramas de arquitectura y trazabilidad (mmd y png)
+├── references            <- ML Canvas (html, pdf y png) y diagramas de arquitectura, trazabilidad e infraestructura en la nube (mmd y png)
 │
 ├── reports               <- Análisis generados (HTML, PDF, etc.)
 │   └── figures           <- Gráficas y figuras para los reportes
