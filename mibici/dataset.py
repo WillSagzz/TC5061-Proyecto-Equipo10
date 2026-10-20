@@ -4,36 +4,37 @@ Uso desde la raíz del repositorio (``make data``):
 
     python -m mibici.dataset
 
-Descubre los enlaces del periodo en el portal, descarga a ``data/raw/`` lo que falte, normaliza
-y limpia los viajes, escribe los Parquet de ``data/processed/`` y regenera ``data_manifest.json``
-con el hash SHA-256 de cada archivo y la versión de datos. Rutas, fechas y reglas de limpieza
-salen de ``config.py``.
+Reconstruye la versión de datos descrita en ``datapackage.json`` (descriptor Frictionless Data
+Package que escribe ``make snapshot``, ver ``datapackage.py``): descarga a ``data/raw/`` los
+archivos que falten, verifica el tamaño y el hash SHA-256 de cada uno contra el descriptor y
+termina con error si alguno difiere, valida una muestra de filas contra el esquema declarado,
+normaliza y limpia los viajes, escribe los Parquet de ``data/processed/`` y comprueba que
+coinciden con los que describe el descriptor. Rutas, fechas y reglas de limpieza salen de
+``config.py``.
 """
 
-import datetime
 import hashlib
-import json
 from pathlib import Path
 import time
 import unicodedata
 
 from bs4 import BeautifulSoup
+from frictionless import FrictionlessException, Package, Resource
 from loguru import logger
 import pandas
+import pyarrow.parquet as pq
 import requests
 from tqdm import tqdm
 import typer
 
 from mibici.config import (
-    DATA_DIR,
-    DATA_MANIFEST_PATH,
+    DATAPACKAGE_PATH,
     END_DATE,
     MAX_TRIP_MINUTES,
-    MIBICI_BASE_URL,
-    MIBICI_DATA_PAGE,
     MIN_TRIP_MINUTES,
     NO_SERVICE_HOURS,
     RAW_DATA_DIR,
+    RAW_VALIDATION_ROWS,
     START_DATE,
     STATION_COLUMNS,
     STATIONS_PATH,
@@ -42,6 +43,16 @@ from mibici.config import (
 )
 
 app = typer.Typer()
+
+# Nombre del recurso del catálogo de estaciones en datapackage.json; los meses se llaman
+# datos-abiertos-AAAA-MM y los Parquet, como sus archivos (meses y nomenclatura-procesada)
+NOMENCLATURA_RESOURCE = "nomenclatura"
+TRIPS_RESOURCE = "meses"
+STATIONS_RESOURCE = "nomenclatura-procesada"
+
+
+class DataVersionError(RuntimeError):
+    """Los datos locales o el portal no coinciden con la versión descrita en datapackage.json."""
 
 
 # MARK: Fetch URL
@@ -71,7 +82,8 @@ def get_paths(site_html: str) -> dict[str, list[str]]:
     """Extrae de la página de datos abiertos los enlaces a los CSV mensuales y al catálogo.
 
     Los enlaces llevan un identificador numérico que asigna el portal, por eso se leen de la
-    página en lugar de mantener una lista a mano.
+    página en lugar de mantener una lista a mano. Solo ``make snapshot`` los necesita:
+    ``make data`` descarga las URL que ya están en el descriptor.
 
     Args:
         site_html: HTML de la página de datos abiertos.
@@ -132,35 +144,39 @@ def filter_paths(paths: list, start_date: str, end_date: str) -> list[str]:
 
 
 # MARK: Download files
-def download_files(base_url: str, path_list: list, input_path: Path) -> None:
-    """Descarga a ``input_path`` los archivos que todavía no estén ahí.
+def download_file(url: str, destination: Path) -> None:
+    """Descarga un archivo del portal a ``destination`` y hace una pausa para no saturarlo.
 
-    Los archivos ya descargados no se vuelven a pedir, así la ingesta se puede repetir sin
-    costo y ``data/raw/`` funciona como copia inmutable de la que se calculan los hashes.
+    Args:
+        url: Dirección completa del archivo.
+        destination: Ruta local; la carpeta se crea si no existe (``data/`` no está en Git).
+    """
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    r = get_url(url)
+    with open(destination, "wb") as f:
+        f.write(r.content)
+    time.sleep(1)  # pausa entre descargas para no saturar el portal de MiBici
+
+
+def download_files(
+    base_url: str, path_list: list, input_path: Path, overwrite: bool = False
+) -> None:
+    """Descarga a ``input_path`` los archivos de ``path_list`` (lo usa ``make snapshot``).
 
     Args:
         base_url: Dominio del portal.
         path_list: Rutas relativas de los archivos (las que devuelve ``get_paths``).
-        input_path: Carpeta de destino; se crea si no existe (``data/`` no está en Git).
+        input_path: Carpeta de destino; se crea si no existe.
+        overwrite: Si es falso, los archivos ya presentes no se vuelven a pedir.
     """
     input_path = Path(input_path)
     input_path.mkdir(parents=True, exist_ok=True)
-    existing_filenames = {path.name for path in input_path.iterdir()}
-
     for filepath in tqdm(path_list, desc="Downloading files", unit=" files"):
-        filename = filepath.split("/")[-1]
-        input_filepath = input_path / filename
-
-        # Si el archivo ya se descargó, no hace falta repetirlo
-        if filename in existing_filenames:
+        destination = input_path / filepath.split("/")[-1]
+        if destination.exists() and not overwrite:
             continue
-
-        file_url = base_url + filepath
-        r = get_url(file_url)
-
-        with open(input_filepath, "wb") as f:
-            f.write(r.content)
-        time.sleep(1)  # pausa entre descargas para no saturar el portal de MiBici
+        download_file(base_url + filepath, destination)
 
 
 # MARK: Read files
@@ -183,6 +199,24 @@ def detect_encoding(filepath: Path) -> str:
         return "utf-8-sig"
     except UnicodeDecodeError:
         return "latin-1"
+
+
+def detect_date_format(sample: str) -> str:
+    """Devuelve el patrón ``strptime`` con que se escribió una fecha de MiBici.
+
+    Septiembre y octubre de 2024 usan día/mes/año sin segundos (``01/09/2024 08:15``); el
+    resto, ``AAAA-MM-DD HH:MM:SS``. El patrón se guarda en el esquema de cada recurso del
+    descriptor, así un tercer formato en un mes futuro falla en la validación y no se lee mal.
+
+    Args:
+        sample: Una fecha tal como aparece en el CSV.
+
+    Returns:
+        ``"%d/%m/%Y %H:%M"`` o ``"%Y-%m-%d %H:%M:%S"``.
+    """
+    if "/" in sample:
+        return "%d/%m/%Y %H:%M"
+    return "%Y-%m-%d %H:%M:%S"
 
 
 def parse_dates(col: pandas.Series) -> pandas.Series:
@@ -209,9 +243,9 @@ def read_raw_data(
     """Lee los CSV crudos de ``input_path`` y los concatena en una sola tabla.
 
     Los archivos se leen en orden alfabético para que el resultado (y por tanto el hash del
-    Parquet y la versión de datos) sea el mismo en cualquier sistema operativo. De los
-    archivos mensuales se conservan solo las columnas del contrato (``TRIP_COLUMNS``), así
-    que los datos personales nunca pasan de aquí.
+    Parquet) sea el mismo en cualquier sistema operativo. De los archivos mensuales se
+    conservan solo las columnas del contrato (``TRIP_COLUMNS``), así que los datos personales
+    nunca pasan de aquí.
 
     Args:
         input_path: Carpeta con los CSV descargados.
@@ -323,6 +357,44 @@ def clean_trips(df_months: pandas.DataFrame, df_nom: pandas.DataFrame) -> pandas
     return df_clean
 
 
+# MARK: Process and write
+def process_raw(
+    input_path: Path, filenames: list[str]
+) -> tuple[pandas.DataFrame, pandas.DataFrame]:
+    """Lee, normaliza y limpia los CSV crudos (Etapas de normalización y limpieza).
+
+    Lo comparten ``make data`` y ``make snapshot`` para que los Parquet que describe el
+    descriptor sean exactamente los que produce la ingesta.
+
+    Args:
+        input_path: Carpeta con los CSV descargados.
+        filenames: Nombres de los archivos del periodo (meses y nomenclatura).
+
+    Returns:
+        Viajes limpios con las columnas de ``TRIP_COLUMNS`` y nomenclatura con las de
+        ``STATION_COLUMNS``.
+    """
+    logger.info("Processing dataset...")
+    df_months = read_raw_data(input_path=input_path, file_type="month", allowed_files=filenames)
+    df_nom = read_raw_data(input_path=input_path, file_type="nom", allowed_files=filenames)
+
+    # Nombres de columna uniformes y solo las columnas del contrato
+    df_months = norm_cols(df_months)
+    df_nom = norm_cols(df_nom)[list(STATION_COLUMNS)]
+
+    df_months = clean_trips(df_months, df_nom)
+    return df_months, df_nom
+
+
+def write_processed(df_months: pandas.DataFrame, df_nom: pandas.DataFrame) -> None:
+    """Escribe los dos Parquet de ``data/processed/`` (``TRIPS_PATH`` y ``STATIONS_PATH``)."""
+    logger.info("Saving processed dataset...")
+    TRIPS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df_months.to_parquet(TRIPS_PATH, index=False)
+    df_nom.to_parquet(STATIONS_PATH, index=False)
+    logger.success("Processing dataset complete.")
+
+
 # MARK: Data version
 def file_hash(filepath: Path) -> str:
     """Calcula el hash SHA-256 de un archivo: el mismo contenido da siempre el mismo hash.
@@ -340,79 +412,209 @@ def file_hash(filepath: Path) -> str:
     return h.hexdigest()
 
 
+def load_package(datapackage_path: Path = DATAPACKAGE_PATH) -> Package:
+    """Carga el descriptor ``datapackage.json`` y comprueba que es un Data Package válido.
+
+    Args:
+        datapackage_path: Ruta del descriptor; las rutas de sus recursos son relativas a la
+            raíz del repositorio.
+
+    Returns:
+        Paquete con un recurso por CSV crudo y uno por Parquet procesado.
+
+    Raises:
+        DataVersionError: Si el descriptor no existe o no cumple el estándar.
+    """
+    if not Path(datapackage_path).exists():
+        raise DataVersionError(
+            f"No existe {datapackage_path}. Genera la versión de datos con `make snapshot`."
+        )
+    try:
+        # Solo comprueba la estructura del descriptor; los archivos se verifican después
+        package = Package(str(datapackage_path))
+    except FrictionlessException as error:
+        raise DataVersionError(
+            f"{Path(datapackage_path).name} no es un Data Package válido: {error.error.message}"
+        ) from error
+    window = package.custom.get("mibici", {})
+    if (window.get("start_date"), window.get("end_date")) != (START_DATE, END_DATE):
+        raise DataVersionError(
+            f"El descriptor cubre {window.get('start_date')} a {window.get('end_date')} y config.py "
+            f"pide {START_DATE} a {END_DATE}. Regenera la versión con `make snapshot` o corrige config.py."
+        )
+    return package
+
+
+def raw_resources(package: Package) -> list[Resource]:
+    """Recursos de los CSV crudos (meses y nomenclatura), en orden alfabético de archivo."""
+    resources = [r for r in package.resources if r.name not in (TRIPS_RESOURCE, STATIONS_RESOURCE)]
+    return sorted(resources, key=lambda r: Path(r.path).name)
+
+
+def expected_hash(resource: Resource) -> str:
+    """Hash SHA-256 (hexadecimal) declarado en el recurso; el descriptor lo guarda como ``sha256:<hex>``."""
+    declared = resource.hash or ""
+    algorithm, _, digest = declared.partition(":")
+    if algorithm != "sha256" or not digest:
+        raise DataVersionError(
+            f"El recurso '{resource.name}' no declara un hash sha256 (tiene '{declared}')."
+        )
+    return digest
+
+
+def verify_file(resource: Resource) -> None:
+    """Comprueba que el archivo local de un recurso tiene el tamaño y el hash del descriptor.
+
+    Args:
+        resource: Recurso del descriptor con ``path`` local, ``bytes`` y ``hash``.
+
+    Raises:
+        DataVersionError: Si el archivo no existe o su tamaño o hash difieren.
+    """
+    path = Path(resource.normpath)
+    if not path.exists():
+        raise DataVersionError(f"Falta el archivo {path}.")
+    size = path.stat().st_size
+    if size != resource.bytes:
+        raise DataVersionError(
+            f"{path.name}: el descriptor espera {resource.bytes:,} bytes y el archivo tiene {size:,}."
+        )
+    digest = file_hash(path)
+    if digest != expected_hash(resource):
+        raise DataVersionError(
+            f"{path.name}: el descriptor espera sha256 {expected_hash(resource)} y el archivo tiene {digest}."
+        )
+
+
+def ensure_raw_files(package: Package) -> list[str]:
+    """Descarga lo que falte y verifica cada CSV crudo contra el descriptor antes de procesarlo.
+
+    Un archivo presente con tamaño y hash correctos no se vuelve a descargar. Uno presente
+    pero distinto (descarga interrumpida, edición local) se descarga de nuevo una sola vez.
+    Si tras descargarlo sigue sin coincidir, el portal lo republicó con otro contenido y la
+    ingesta termina con error: no hay opción para omitir la verificación, el remedio es una
+    versión nueva de los datos (``make snapshot``) revisada por *Pull Request*.
+
+    Args:
+        package: Descriptor cargado con ``load_package``.
+
+    Returns:
+        Nombres de los archivos crudos verificados.
+
+    Raises:
+        DataVersionError: Si algún archivo no coincide con el descriptor tras descargarlo.
+    """
+    filenames = []
+    for resource in tqdm(raw_resources(package), desc="Verifying raw files", unit=" files"):
+        path = Path(resource.normpath)
+        url = resource.sources[0]["path"]
+        if not path.exists():
+            logger.info(f"Descargando {path.name}...")
+            download_file(url, path)
+        try:
+            verify_file(resource)
+        except DataVersionError as first_error:
+            logger.warning(f"{first_error} Se descarga de nuevo desde {url}")
+            download_file(url, path)
+            try:
+                verify_file(resource)
+            except DataVersionError as second_error:
+                raise DataVersionError(
+                    f"{second_error}\n  El portal republicó el archivo o el descriptor está desactualizado. "
+                    "Genera una versión nueva de los datos con `make snapshot` y revísala por Pull Request."
+                ) from second_error
+        filenames.append(path.name)
+    logger.success(f"{len(filenames)} archivos crudos coinciden con {DATAPACKAGE_PATH.name}")
+    return filenames
+
+
+def validate_raw_sample(package: Package, rows: int = RAW_VALIDATION_ROWS) -> None:
+    """Valida con frictionless las primeras ``rows`` filas de cada CSV contra su esquema.
+
+    Detecta un cambio de formato (columnas renombradas, un tercer formato de fecha, otra
+    codificación) antes de limpiar, con un mensaje claro en lugar de fechas vacías que la
+    limpieza descartaría en silencio. La validación completa de todas las filas la hace
+    ``make validate`` o ``make snapshot``.
+
+    Args:
+        package: Descriptor cargado con ``load_package``.
+        rows: Filas de cada archivo que se validan.
+
+    Raises:
+        DataVersionError: Si alguna fila de la muestra no cumple el esquema.
+    """
+    problems = []
+    for resource in tqdm(raw_resources(package), desc="Validating schemas", unit=" files"):
+        # Con una muestra frictionless no compara hash ni bytes; eso ya lo hizo verify_file
+        report = resource.validate(limit_rows=rows)
+        if not report.valid:
+            for error in report.flatten(["rowNumber", "fieldName", "type", "message"])[:5]:
+                problems.append(f"{resource.name}: {error[3]}")
+    if problems:
+        raise DataVersionError(
+            "Los archivos crudos no cumplen el esquema del descriptor:\n  " + "\n  ".join(problems)
+        )
+    logger.success("Las muestras de los archivos crudos cumplen el esquema del descriptor")
+
+
+def verify_processed(package: Package) -> None:
+    """Comprueba que los Parquet recién escritos coinciden con los que describe el descriptor.
+
+    Si los CSV crudos coincidían y los Parquet no, cambiaron las reglas de limpieza o el
+    entorno: la versión de datos debe regenerarse con ``make snapshot`` para que el cambio
+    quede en el descriptor y se revise.
+
+    Args:
+        package: Descriptor cargado con ``load_package``.
+
+    Raises:
+        DataVersionError: Si el número de filas, el tamaño o el hash de un Parquet difieren.
+    """
+    for name in (TRIPS_RESOURCE, STATIONS_RESOURCE):
+        resource = package.get_resource(name)
+        path = Path(resource.normpath)
+        rows = pq.read_metadata(path).num_rows
+        if rows != resource.rows:
+            raise DataVersionError(
+                f"{path.name}: el descriptor espera {resource.rows:,} filas y el Parquet tiene {rows:,}. "
+                "Cambiaron las reglas de limpieza o el entorno: regenera la versión con `make snapshot`."
+            )
+        try:
+            verify_file(resource)
+        except DataVersionError as error:
+            raise DataVersionError(
+                f"{error}\n  Cambiaron las reglas de limpieza o el entorno: regenera la versión con `make snapshot`."
+            ) from error
+    logger.success(f"Los Parquet procesados coinciden con {DATAPACKAGE_PATH.name}")
+
+
 # MARK: Main fn
 @app.command()
-def main(
-    data_path: Path = DATA_DIR,
-    input_path: Path = RAW_DATA_DIR,
-    start_date: str = START_DATE,
-    end_date: str = END_DATE,
-) -> None:
-    """Ejecuta la ingesta completa: descubre, descarga, limpia, guarda en Parquet y versiona.
+def main(datapackage_path: Path = DATAPACKAGE_PATH) -> None:
+    """Reconstruye la versión de datos de datapackage.json: descarga, verifica, limpia y guarda.
 
-    Las opciones toman por defecto las rutas y fechas de ``config.py``.
+    Las rutas de los recursos son relativas a la raíz del repositorio y las reglas de
+    limpieza salen de ``config.py``.
     """
-    logger.info("Fetching dataset...")
-    logger.info(f"Input path: {input_path}")
+    try:
+        package = load_package(datapackage_path)
+        logger.info(
+            f"Versión de datos {package.version} ({package.name}) de {Path(datapackage_path).name}"
+        )
 
-    # Página de datos abiertos
-    logger.info("Fetching website...")
-    r = get_url(MIBICI_DATA_PAGE)
-
-    # Enlaces a los archivos
-    file_paths = get_paths(r.text)
-
-    # Solo los meses del periodo, más el catálogo
-    paths_list = filter_paths(file_paths["Months"], start_date, end_date)
-    paths_list.append(file_paths["Nom"][0])
-
-    # Descarga de lo que falte
-    download_files(MIBICI_BASE_URL, paths_list, input_path)
-
-    logger.info("Processing dataset...")
-
-    # Lectura (solo los archivos del rango de fechas)
-    filenames = [p.split("/")[-1] for p in paths_list]
-    df_months = read_raw_data(input_path=input_path, file_type="month", allowed_files=filenames)
-    df_nom = read_raw_data(input_path=input_path, file_type="nom", allowed_files=filenames)
-
-    # Nombres de columna uniformes y solo las columnas del contrato
-    df_months = norm_cols(df_months)
-    df_nom = norm_cols(df_nom)[list(STATION_COLUMNS)]
-
-    # Limpieza de viajes
-    df_months = clean_trips(df_months, df_nom)
-
-    # Escritura en Parquet
-    logger.info("Saving processed dataset...")
-    TRIPS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df_months.to_parquet(TRIPS_PATH, index=False)
-    df_nom.to_parquet(STATIONS_PATH, index=False)
-
-    logger.success("Processing dataset complete.")
-
-    logger.info("Recording data version...")
-    raw_hashes = {f: file_hash(Path(input_path) / f) for f in sorted(filenames)}
-    processed_hashes = {path.name: file_hash(path) for path in (TRIPS_PATH, STATIONS_PATH)}
-    # La versión depende solo del contenido: mismos datos, misma versión
-    version = hashlib.sha256(json.dumps(processed_hashes, sort_keys=True).encode()).hexdigest()[
-        :12
-    ]
-    manifest_dict = {
-        "version": version,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime(
-            "%d/%m/%Y, %H:%M:%S UTC"
-        ),
-        "date_range": {"start_date": start_date, "end_date": end_date},
-        "record_count_months": df_months.shape[0],
-        "record_count_nom": df_nom.shape[0],
-        "raw_files_sha256": raw_hashes,
-        "processed_files_sha256": processed_hashes,
-    }
-    # Fuera de data/ para poder versionarlo en Git
-    with open(DATA_MANIFEST_PATH, "w") as f:
-        json.dump(manifest_dict, f, indent=2)
-    logger.success(f"Data version {version} saved in {DATA_MANIFEST_PATH.name}")
+        # 1. Descarga lo que falte y verifica tamaño y hash antes de procesar
+        filenames = ensure_raw_files(package)
+        # 2. Valida una muestra de cada archivo contra el esquema declarado
+        validate_raw_sample(package)
+        # 3. Normaliza, limpia y escribe los Parquet
+        df_months, df_nom = process_raw(RAW_DATA_DIR, filenames)
+        write_processed(df_months, df_nom)
+        # 4. Comprueba que los Parquet son los que describe el descriptor
+        verify_processed(package)
+    except DataVersionError as error:
+        logger.error(str(error))
+        raise typer.Exit(code=1) from error
+    logger.success(f"Datos reconstruidos: versión {package.version}")
 
 
 if __name__ == "__main__":
