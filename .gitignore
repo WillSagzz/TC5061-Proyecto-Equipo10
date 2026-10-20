@@ -17,6 +17,13 @@ infra/users.txt
 *.pickle
 *.joblib
 
+# Figuras que escribe `make train` en reports/figures: se regeneran y cada run las guarda
+# como artefacto en MLflow; solo se versiona el .gitkeep de la carpeta
+reports/figures/*.png
+
+# Configuración del editor
+.vscode/
+
 # Mac OS-specific storage files
 .DS_Store
 
