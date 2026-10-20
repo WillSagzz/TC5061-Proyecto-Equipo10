@@ -20,10 +20,7 @@ class AuthApi:
         self.timeout = timeout
 
     def _call(self, method: str, path: str, **kwargs) -> requests.Response:
-        response = self.session.request(
-            method, f"{self.url}{path}", timeout=self.timeout, **kwargs
-        )
-        return response
+        return self.session.request(method, f"{self.url}{path}", timeout=self.timeout, **kwargs)
 
     def _ok(self, method: str, path: str, **kwargs) -> dict:
         response = self._call(method, path, **kwargs)
@@ -61,15 +58,7 @@ class AuthApi:
             body["current_password"] = current_password
         self._ok("PATCH", "/api/2.0/mlflow/users/update-password", json=body)
 
-    # Experimentos y permisos -------------------------------------------------------------
-    def list_experiments(self) -> list[dict]:
-        data = self._ok(
-            "POST",
-            "/api/2.0/mlflow/experiments/search",
-            json={"max_results": 1000, "view_type": "ACTIVE_ONLY"},
-        )
-        return data.get("experiments", [])
-
+    # Experimentos ------------------------------------------------------------------------
     def get_experiment_by_name(self, name: str) -> dict | None:
         response = self._call(
             "GET", "/api/2.0/mlflow/experiments/get-by-name", params={"experiment_name": name}
@@ -81,36 +70,39 @@ class AuthApi:
             "experiment_id"
         ]
 
-    def get_experiment_permission(self, username: str, experiment_id: str) -> str | None:
-        response = self._call(
-            "GET",
-            "/api/3.0/mlflow/users/permissions/get",
-            params={
-                "username": username,
-                "resource_type": "experiment",
-                "resource_id": experiment_id,
-            },
-        )
-        if response.status_code == 200:
-            return response.json().get("permission")
-        return None
+    # Roles (servidores >= 3.16): permisos por patrón de recurso, p. ej. EDIT en experiment:*
+    def list_roles(self, workspace: str) -> list[dict]:
+        data = self._ok("GET", "/api/3.0/mlflow/roles/list", params={"workspace": workspace})
+        return data.get("roles", [])
 
-    def grant_experiment_permission(
-        self, username: str, experiment_id: str, permission: str
+    def create_role(self, workspace: str, name: str, description: str) -> dict:
+        body = {"workspace": workspace, "name": name, "description": description}
+        return self._ok("POST", "/api/3.0/mlflow/roles/create", json=body)["role"]
+
+    def get_role(self, role_id: int) -> dict:
+        return self._ok("GET", "/api/3.0/mlflow/roles/get", params={"role_id": str(role_id)})[
+            "role"
+        ]
+
+    def add_role_permission(
+        self, role_id: int, resource_type: str, resource_pattern: str, permission: str
     ) -> None:
         body = {
-            "username": username,
-            "resource_type": "experiment",
-            "resource_id": experiment_id,
+            "role_id": role_id,
+            "resource_type": resource_type,
+            "resource_pattern": resource_pattern,
             "permission": permission,
         }
-        response = self._call("POST", "/api/3.0/mlflow/users/permissions/grant", json=body)
-        if response.ok:
-            return
-        # Si ya había una concesión distinta, se reemplaza
-        self._ok(
-            "POST",
-            "/api/3.0/mlflow/users/permissions/revoke",
-            json={k: v for k, v in body.items() if k != "permission"},
-        )
-        self._ok("POST", "/api/3.0/mlflow/users/permissions/grant", json=body)
+        self._ok("POST", "/api/3.0/mlflow/roles/permissions/add", json=body)
+
+    def list_user_roles(self, username: str) -> list[dict]:
+        data = self._ok("GET", "/api/3.0/mlflow/users/roles/list", params={"username": username})
+        return data.get("roles", [])
+
+    def assign_role(self, username: str, role_id: int) -> None:
+        body = {"username": username, "role_id": role_id}
+        self._ok("POST", "/api/3.0/mlflow/roles/assign", json=body)
+
+    def unassign_role(self, username: str, role_id: int) -> None:
+        body = {"username": username, "role_id": role_id}
+        self._ok("DELETE", "/api/3.0/mlflow/roles/unassign", json=body)

@@ -1,13 +1,13 @@
-"""Crea los usuarios del equipo en el servidor MLflow y reparte permisos.
+"""Crea los usuarios del equipo en el servidor MLflow y les asigna su rol.
 
 Lee ``infra/users.txt`` (archivo local, fuera de Git; formato en ``users.example.txt``: una línea
-por persona, ``usuario,rol``; rol ``editor`` o ``lector``),
-crea los usuarios que falten con una contraseña generada, otorga ``EDIT`` a los editores sobre
-cada experimento existente (los lectores se quedan con el permiso por defecto, ``READ``) y
-escribe las contraseñas nuevas en ``infra/.users.env`` (fuera de Git) para entregarlas en
-privado. Es idempotente: se puede volver a correr cuando aparezca un experimento o una
-persona nueva. Con ``--prune`` borra los usuarios que ya no estén en la lista y con
-``--reset USUARIO`` le asigna una contraseña nueva a quien olvidó la suya.
+por persona, ``usuario,rol``; rol ``editor`` o ``lector``), crea los usuarios que falten con una
+contraseña generada y asigna a los editores el rol ``editores``, que tiene permiso ``EDIT`` sobre
+todos los experimentos y modelos registrados, presentes y futuros (patrón ``*``). Los lectores
+se quedan con el permiso por defecto del servidor, ``READ``. Escribe las contraseñas nuevas en
+``infra/.users.env`` (fuera de Git) para entregarlas en privado. Es idempotente: se puede volver
+a correr cuando entre o salga una persona. Con ``--prune`` borra los usuarios que ya no estén
+en la lista y con ``--reset USUARIO`` le asigna una contraseña nueva a quien olvidó la suya.
 
 Lo ejecuta ``make infra-users`` con las credenciales de ``admin``.
 """
@@ -32,8 +32,13 @@ try:
     from mibici.config import MLFLOW_EXPERIMENT_NAME
 except ImportError:  # pragma: no cover
     MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "")
-ROLES = {"editor": "EDIT", "lector": None}
+
+ROLES = {"editor": True, "lector": False}  # ¿recibe el rol de edición?
 PROTECTED = {"admin"}
+# Sin --enable-workspaces todos los recursos y roles viven en el workspace por defecto
+WORKSPACE = "default"
+EDITOR_ROLE = "editores"
+EDITOR_ROLE_PERMISSIONS = (("experiment", "*", "EDIT"), ("registered_model", "*", "EDIT"))
 
 
 def generate_password(length: int = 20) -> str:
@@ -56,6 +61,25 @@ def read_users(path: Path) -> dict[str, str]:
     return users
 
 
+def ensure_editor_role(api: AuthApi) -> int:
+    """Crea el rol de edición si falta y garantiza sus permisos con comodín; devuelve su id."""
+    role = next((r for r in api.list_roles(WORKSPACE) if r["name"] == EDITOR_ROLE), None)
+    if role is None:
+        role = api.create_role(
+            WORKSPACE, EDITOR_ROLE, "EDIT en todos los experimentos y modelos, presentes y futuros"
+        )
+        print(f"  + rol '{EDITOR_ROLE}': creado")
+    granted = {
+        (p["resource_type"], p["resource_pattern"])
+        for p in api.get_role(role["id"]).get("permissions", [])
+    }
+    for resource_type, pattern, permission in EDITOR_ROLE_PERMISSIONS:
+        if (resource_type, pattern) not in granted:
+            api.add_role_permission(role["id"], resource_type, pattern, permission)
+            print(f"  ~ rol '{EDITOR_ROLE}': {permission} en {resource_type}:{pattern}")
+    return role["id"]
+
+
 def main() -> None:
     # Windows abre la consola en cp1252 y MLflow imprime emojis y acentos: forzar UTF-8
     sys.stdout.reconfigure(encoding="utf-8")
@@ -72,7 +96,6 @@ def main() -> None:
     admin_password = os.getenv("MLFLOW_ADMIN_PASSWORD")
     if not args.url or not admin_password:
         sys.exit("Faltan MLFLOW_URL o MLFLOW_ADMIN_PASSWORD (los exporta `make infra-users`)")
-
     if not args.users_file.exists():
         sys.exit(
             f"Falta {args.users_file}: cópialo de users.example.txt con los usuarios del equipo "
@@ -91,12 +114,6 @@ def main() -> None:
         created[username] = password
         print(f"  + {username}: creado")
 
-    # El experimento del equipo se crea aquí (y no en el primer `make train`) para que todos
-    # los editores reciban EDIT desde el principio; quien crea un experimento es MANAGE y el
-    # resto solo READ hasta que se vuelva a correr este script.
-    if MLFLOW_EXPERIMENT_NAME and api.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME) is None:
-        api.create_experiment(MLFLOW_EXPERIMENT_NAME)
-        print(f"  + experimento '{MLFLOW_EXPERIMENT_NAME}': creado")
     for username in args.reset:
         if not api.user_exists(username):
             sys.exit(f"No existe el usuario {username}")
@@ -105,17 +122,23 @@ def main() -> None:
         created[username] = password
         print(f"  * {username}: contraseña restablecida")
 
-    experiments = api.list_experiments()
+    # El experimento del equipo se crea aquí para que exista desde el primer `make train`.
+    if MLFLOW_EXPERIMENT_NAME and api.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME) is None:
+        api.create_experiment(MLFLOW_EXPERIMENT_NAME)
+        print(f"  + experimento '{MLFLOW_EXPERIMENT_NAME}': creado")
+
+    # Un rol con comodín en lugar de permisos por experimento: cubre también los experimentos
+    # que se creen después, sin volver a correr este script. Los lectores no reciben el rol y
+    # se quedan con el permiso por defecto del servidor (READ).
+    editor_role_id = ensure_editor_role(api)
     for username, role in wanted.items():
-        permission = ROLES[role]
-        if permission is None:
-            continue
-        for experiment in experiments:
-            experiment_id = experiment["experiment_id"]
-            if api.get_experiment_permission(username, experiment_id) == permission:
-                continue
-            api.grant_experiment_permission(username, experiment_id, permission)
-            print(f"  ~ {username}: {permission} en '{experiment['name']}'")
+        has_role = any(r["id"] == editor_role_id for r in api.list_user_roles(username))
+        if ROLES[role] and not has_role:
+            api.assign_role(username, editor_role_id)
+            print(f"  ~ {username}: rol '{EDITOR_ROLE}' asignado")
+        elif not ROLES[role] and has_role:
+            api.unassign_role(username, editor_role_id)
+            print(f"  ~ {username}: rol '{EDITOR_ROLE}' retirado (solo lectura)")
 
     if args.prune:
         for username in api.list_users():
@@ -126,7 +149,7 @@ def main() -> None:
     if created:
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with args.out.open("a", encoding="utf-8") as handle:
-            handle.write(f"# Contraseñas iniciales generadas el {stamp}. NO entra a Git.\n")
+            handle.write(f"# Contraseñas generadas el {stamp}. NO entra a Git.\n")
             for username, password in created.items():
                 handle.write(f"{username}={password}\n")
         print(f"\nContraseñas nuevas en {args.out}; entrégalas por un canal privado.")

@@ -22,8 +22,8 @@ sequenceDiagram
   App->>PG: primer arranque: crea las tablas y el usuario admin
   Admin->>Make: make infra-users
   Make->>Local: lee users.txt (usuario,rol) y .secrets.env
-  Make->>App: API de auth: crea usuarios, el experimento del equipo y permisos EDIT (como admin)
-  App->>PG: guarda usuarios y permisos
+  Make->>App: API de auth (como admin): crea usuarios, el experimento del equipo<br/>y el rol editores (EDIT en experiment:* y registered_model:*)
+  App->>PG: guarda usuarios, roles y asignaciones
   Make->>Local: escribe contraseñas iniciales en .users.env
   Admin-->>Admin: entrega URL, usuario y contraseña a cada persona por un canal privado
 

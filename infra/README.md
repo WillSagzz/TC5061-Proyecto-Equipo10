@@ -156,7 +156,7 @@ previsto es iterar en local y correr el experimento definitivo contra el servido
 | Síntoma | Causa y solución |
 |---|---|
 | `401 Unauthorized` | Usuario o contraseña incorrectos en `.env`, o `.env` no está en la raíz del repositorio. |
-| `403 Permission denied` al crear un *run* | Tu usuario es de solo lectura o el experimento es nuevo y aún no te dieron `EDIT`: pide a quien administra que corra `make infra-users`. |
+| `403 Permission denied` al crear un *run* | Tu usuario es de solo lectura (rol `lector`). Los editores pueden escribir en cualquier experimento, también en los nuevos. |
 | `UnicodeEncodeError` en Windows | La consola abre en cp1252 y MLflow imprime emojis. Los scripts de `infra/` ya lo corrigen; para `make train` usa `set PYTHONIOENCODING=utf-8` (cmd) o `$env:PYTHONIOENCODING="utf-8"` (PowerShell). |
 | La URL no responde | El servidor arranca en 1 o 2 minutos tras un redeploy; si persiste, avisa a quien administra (`make infra-logs`). |
 
@@ -196,15 +196,18 @@ se restablece o se borra.
 
 `infra/users.txt` es la fuente: `usuario,rol` por línea, rol `editor` (ve todo y registra
 *runs*) o `lector` (solo lectura). `make infra-users` es idempotente: crea los que falten,
-crea el experimento `mibici-equipo10` si no existe y otorga `EDIT` a los editores sobre todos
-los experimentos existentes.
+crea el experimento `mibici-equipo10` si no existe y asigna a los editores el rol
+`editores`, que tiene `EDIT` sobre `experiment:*` y `registered_model:*`. Como el permiso es
+por patrón y no por experimento, cubre también los experimentos que se creen después: no hay
+que volver a correr nada cuando alguien crea uno nuevo. Los lectores no reciben el rol y se
+quedan con el permiso por defecto del servidor, `READ`.
 
 | Tarea | Cómo |
 |---|---|
 | Agregar un integrante | Añadir la línea a `users.txt` y `make infra-users`; su contraseña aparece en `.users.env` |
 | Quitar un integrante | Borrar la línea y `make infra-users PRUNE=1` |
 | Alguien olvidó su contraseña | `make infra-reset-password USUARIO=nombre`; la nueva se agrega a `.users.env` |
-| Alguien creó un experimento nuevo | `make infra-users` (quien lo crea es `MANAGE`; el resto queda en `READ` hasta correr esto) |
+| Cambiar a alguien de editor a lector (o al revés) | Cambiar el rol en `users.txt` y `make infra-users`; el rol se asigna o se retira |
 | Rotar la contraseña de `admin` | Con las credenciales actuales: `MLFLOW_TRACKING_URI=... MLFLOW_TRACKING_USERNAME=admin MLFLOW_TRACKING_PASSWORD=... python infra/scripts/change_password.py` y actualizar `infra/.secrets.env` (la variable del contenedor solo se usa la primera vez) |
 
 Crear usuarios exige las credenciales de `admin`: nadie puede registrarse solo.
@@ -249,9 +252,12 @@ identidad antes de desplegar y los imprime como expresiones. Es ruido conocido.
   segundos. Con el caché, una credencial verificada vale 60 s: las peticiones autenticadas
   bajaron de 0.8 s a 0.3 s y una ráfaga de ocho, de 6.8 s a 0.6 s. El único efecto es que
   una contraseña recién cambiada sigue siendo válida hasta un minuto.
-- **`default_permission = READ`** en la autenticación básica; los permisos `EDIT` son
-  explícitos por usuario y experimento (`create_users.py`). La base de usuarios es la misma
-  PostgreSQL del *tracking* (tablas propias), así que sobrevive a redeploys.
+- **`default_permission = READ`** en la autenticación básica, y la edición por **rol con
+  comodín** (`editores`: `EDIT` en `experiment:*` y `registered_model:*`, asignado por
+  `create_users.py`). Se prefirió a `default_permission = EDIT` porque así el usuario de solo
+  lectura nunca puede escribir, y a los permisos por experimento porque esos no cubren los
+  experimentos nuevos. La base de usuarios y roles es la misma PostgreSQL del *tracking*
+  (tablas propias), así que sobrevive a redeploys.
 - **Firewall de PostgreSQL** con la regla `0.0.0.0` ("servicios de Azure") porque la Container
   App del plan Consumption no tiene IP fija. Para conectarte con `psql` desde tu máquina agrega
   una regla temporal con tu IP desde el portal.
