@@ -20,6 +20,8 @@ import typer
 
 from mibici.config import MODELS_DIR, PROCESSED_DATA_DIR
 from mibici.features import (
+    P1_FEATURES,
+    P2_FEATURES,
     P3_FEATURES,
     build_p1_table,
     build_p2_table,
@@ -60,7 +62,7 @@ def p1(model_name: str = "p1_baseline") -> None:
     test = split_by_date(build_p1_table(trips, stations), "period_start")["test"]
     model = _load_model(model_name)
     predictions = test[["station_id", "period_start", "departures"]].assign(
-        departures_pred=model.predict(test)
+        departures_pred=model.predict(test[P1_FEATURES])
     )
     _save_predictions(predictions, f"{model_name}_predicciones")
 
@@ -72,10 +74,12 @@ def p2(model_name: str = "p2_baseline") -> None:
     test = split_by_date(build_p2_table(trips, stations), "period_start")["test"]
     model = _load_model(model_name)
     probabilities = pd.DataFrame(
-        model.predict_proba(test), index=test.index, columns=[f"prob_{c}" for c in model.classes_]
+        model.predict_proba(test[P2_FEATURES]),
+        index=test.index,
+        columns=[f"prob_{c}" for c in model.classes_],
     )
     predictions = test[["station_id", "period_start", "risk"]].assign(
-        risk_pred=model.predict(test)
+        risk_pred=model.predict(test[P2_FEATURES])
     )
     _save_predictions(predictions.join(probabilities), f"{model_name}_predicciones")
 

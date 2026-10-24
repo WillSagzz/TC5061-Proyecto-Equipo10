@@ -42,7 +42,7 @@ portátil, por lo que no se necesita un servicio de predicción en línea ni có
 | **Qué se predice o agrupa** | Número de viajes iniciados (salidas) en una estación. | Una de tres clases: *riesgo de vaciarse*, *riesgo de llenarse* o *sin riesgo*. | Perfiles funcionales de estaciones con hábitos de uso similares, proyectados después en el mapa. |
 | **Granularidad** | Estación × hora. | Estación × intervalo de 3 horas (8 intervalos por día). | Estación (comportamiento consolidado de todo el periodo). |
 | **Horizonte** | 24 horas: al cierre de cada día se pronostica hora por hora el día siguiente. | 3 horas: al cierre de cada intervalo se pronostica el intervalo siguiente. | Estructural e histórico; se recalcula mensualmente. |
-| **Variable objetivo** | Conteo de salidas por estación y hora; las combinaciones sin viajes valen cero y se excluyen las horas de 1:00 a 4:59, sin servicio. | Flujo neto (llegadas − salidas) del intervalo comparado con la capacidad de la estación. | No hay: se agrupa sobre el perfil de uso de cada estación. |
+| **Variable objetivo** | Conteo de salidas por estación y hora; las combinaciones sin viajes valen cero y se excluyen las horas de 1:00 a 4:59, sin servicio, y las horas antes de que abriera o después de que cerrara cada estación. | Flujo neto (llegadas − salidas) del intervalo comparado con la capacidad de la estación. | No hay: se agrupa sobre el perfil de uso de cada estación. |
 | **Modelo *baseline*** | `DummyRegressor(strategy="mean")` por estación y hora del día. | `DummyClassifier(strategy="prior")` por estación, intervalo del día y tipo de día (laboral o fin de semana). | `StandardScaler` + `KMeans` con 4 grupos; silueta y Davies-Bouldin registradas para `k` de 2 a 8. |
 | **Modelos candidatos** | `Ridge` con rezagos y calendario; `HistGradientBoostingRegressor` o LightGBM. | `LogisticRegression(class_weight="balanced")`; `HistGradientBoostingClassifier`. | `KMeans` con selección de `k`; `AgglomerativeClustering`. |
 | **Métricas** | `test_mae`, `test_rmse` — en unidades de viajes; la RMSE penaliza los fallos grandes en hora pico. | `test_recall_vaciarse`, `test_recall_llenarse`, precisión y precisión promedio por clase, `test_f1_macro` — el falso negativo es el error más caro para rebalanceo. | `train_silhouette`, `train_davies_bouldin` — cohesión y separación de los grupos. |
@@ -110,13 +110,23 @@ para que las métricas de las entregas sean comparables.
 Las variables derivadas se implementan como funciones documentadas en
 [`mibici/features.py`](mibici/features.py), siguiendo el procedimiento del notebook de
 exploración y el catálogo de la propuesta: salidas, llegadas y flujo neto por estación y
-periodo; hora del día, día de la semana y fin de semana; capacidad de la estación; salidas
-registradas 1 h, 24 h y 7 días antes, llegadas y flujo neto 1 h y 24 h antes y promedio móvil
-de las 3 horas cerradas previas (en P2, los mismos rezagos en intervalos de 3 horas); la
-etiqueta de riesgo de P2; y el perfil de uso de cada estación para P3 (porcentaje de
-movimientos por periodo del día y en días laborales, uso diario por anclaje en escala
-logarítmica y balances de mañana y tarde, calculados solo con el periodo de entrenamiento).
-Los rezagos y las ventanas viven en `config.py`. El catálogo y su justificación están en la
+periodo, desde el día en que abrió cada estación; hora del día, día de la semana y fin de
+semana; capacidad de la estación; las variables históricas; la etiqueta de riesgo de P2; y el
+perfil de uso de cada estación para P3 (porcentaje de movimientos por periodo del día y en días
+laborales, uso diario por anclaje en escala logarítmica y balances de mañana y tarde,
+calculados solo con el periodo de entrenamiento). Las variables históricas dependen del
+horizonte de cada pregunta:
+
+- **P1** (pronóstico al cierre del día para todas las horas del siguiente): salidas 24 h y 7
+  días antes, llegadas y flujo neto 24 h antes y promedio de las salidas de las 3 horas que
+  terminan a la misma hora del día anterior.
+- **P2** (pronóstico del intervalo siguiente): salidas 1, 8 y 56 intervalos antes (3 h, 24 h y
+  7 días), llegadas y flujo neto 1 y 8 intervalos antes y promedio móvil de los 3 intervalos
+  cerrados previos.
+
+Los rezagos, las ventanas y el horizonte de P1 viven en `config.py`, y las variables que
+recibe cada modelo, en `P1_FEATURES` y `P2_FEATURES` de `features.py`. El catálogo y su
+justificación están en la
 [sección 5 de la propuesta](docs/entregas/entrega01/secciones/05-pipeline.md).
 
 ### Condiciones de uso y datos personales
@@ -142,7 +152,17 @@ las tres preguntas. Para evitar fuga de información del futuro:
 
 - Toda variable histórica se calcula solo con datos cerrados antes del momento de la
   predicción: en P1 hasta el cierre del día anterior, en P2 hasta el cierre del intervalo
-  anterior y en P3 solo con el periodo de entrenamiento.
+  anterior y en P3 solo con el periodo de entrenamiento. En P1 esto obliga a usar rezagos de
+  al menos 24 h: el de 1 h de las 18:00 serían las 17:00 del mismo día que se pronostica.
+  `add_lag_features` rechaza cualquier rezago menor que el horizonte (`P1_HORIZON_HOURS` en
+  `config.py`).
+- Los modelos solo reciben las columnas de `P1_FEATURES` y `P2_FEATURES`, nunca la variable
+  objetivo ni los movimientos del periodo que se predice: las salidas son exactamente
+  llegadas − flujo neto, y la clase de riesgo de P2 sale del flujo neto.
+- La serie de cada estación empieza el día de su primer movimiento y termina el día de su
+  último. 110 estaciones abrieron durante la ventana (87 en el periodo de prueba); sin este
+  corte, el entrenamiento incluiría estaciones que solo existen en el futuro y contaría como
+  demanda cero las horas en que todavía no existían.
 - Los escaladores y demás transformaciones se ajustan únicamente con el conjunto de
   entrenamiento, dentro de un `Pipeline` de scikit-learn, y se aplican sin recalcular a
   validación y prueba.
@@ -321,7 +341,7 @@ El experimento se ejecuta desde el código del repositorio (`train.py`), nunca s
   `P3-baseline-kmeans-k4`.
 - **Parámetros para reproducir el *run*:** `version_datos`, `inicio_entrenamiento`,
   `inicio_validacion`, `inicio_prueba`, `fin_datos`, `semilla`, modelo e hiperparámetros, número
-  de filas de cada conjunto y de grupos.
+  de filas de cada conjunto y de grupos, y `variables` (las columnas de entrada del modelo).
 - **Métricas con el conjunto como prefijo:** `train_`, `val_` y `test_` de `mae` y `rmse` (P1);
   `recall`, `precision` y `avg_precision` de las clases `vaciarse` y `llenarse` y `f1_macro`
   (P2); `train_silhouette` y `train_davies_bouldin`, más sus curvas por `k` (P3).
