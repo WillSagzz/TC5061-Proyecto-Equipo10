@@ -7,10 +7,22 @@ mlruns/
 mlartifacts/
 mlflow.db
 
+# Servidor MLflow en Azure: secretos del despliegue y contraseñas generadas, nunca en Git
+infra/.secrets.env
+infra/.users.env
+infra/users.txt
+
 # Modelos serializados: se regeneran con el código de entrenamiento
 *.pkl
 *.pickle
 *.joblib
+
+# Figuras que escribe `make train` en reports/figures: se regeneran y cada run las guarda
+# como artefacto en MLflow; solo se versiona el .gitkeep de la carpeta
+reports/figures/*.png
+
+# Configuración del editor
+.vscode/
 
 # Mac OS-specific storage files
 .DS_Store

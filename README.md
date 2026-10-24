@@ -227,8 +227,8 @@ El mensaje nombra el archivo y la causa. Según el mensaje:
 ![Arquitectura del sistema](references/arquitectura.png)
 
 Los nodos azules se versionan en Git, los cilindros naranjas son almacenamiento local fuera de
-Git y el cilindro verde punteado es el servidor de MLflow en Azure planeado para la siguiente
-entrega. Fuente del diagrama: [`references/arquitectura.mmd`](references/arquitectura.mmd).
+Git y el cilindro verde es el servidor MLflow compartido del equipo en Azure, definido en
+[`infra/`](infra/). Fuente del diagrama: [`references/arquitectura.mmd`](references/arquitectura.mmd).
 
 | # | Componente | Herramienta | Por qué |
 |---|---|---|---|
@@ -238,8 +238,21 @@ entrega. Fuente del diagrama: [`references/arquitectura.mmd`](references/arquite
 | 4 | Almacenamiento | `data/raw`, `data/processed`, `models/`, `mlflow.db` y `mlartifacts/` (locales, fuera de Git) | Los datos caben en memoria; se reconstruyen en cualquier máquina con el comando de ingesta. Las tablas de modelado se construyen en memoria al entrenar. |
 | 5 | *Feature engineering* | Funciones en `features.py` con contrato de datos en `config.py`; `Pipeline` de scikit-learn | Evita fugas temporales y *train-serving skew*; código modular y comprobable. |
 | 6 | Entrenamiento | `modeling/train.py` y `modeling/baselines.py` con scikit-learn | Cubre *baselines*, candidatos y métricas; partición cronológica. |
-| 7 | Registro de experimentos | MLflow Tracking local (`mlflow.db` y `mlartifacts/`); servidor en Azure planeado | Herramienta del curso; registra parámetros, métricas, etiquetas y artefactos. |
+| 7 | Registro de experimentos | MLflow Tracking: local (`mlflow.db` y `mlartifacts/`) o el servidor compartido en Azure (Container Apps, PostgreSQL y Blob Storage, desplegado con Bicep desde `infra/`), según `MLFLOW_TRACKING_URI` | Herramienta del curso; misma interfaz en ambos modos; el servidor compartido deja los *runs* de todo el equipo en un solo lugar. |
 | — | Orquestación | `Makefile` (`data`, `train`) | Un grafo de dos pasos no justifica un orquestador. |
+
+### Infraestructura en la nube
+
+![Arquitectura del servidor MLflow compartido en Azure](references/infraestructura_nube.png)
+
+El componente 7 en modo compartido es un MLflow Tracking Server propio en Azure, en un Resource Group
+exclusivo del proyecto: la imagen oficial de MLflow en Azure Container Apps (HTTPS y
+autenticación básica), los metadatos y los usuarios en Azure Database for PostgreSQL y los
+artefactos en Azure Blob Storage, a los que el servidor entra con una Managed Identity. Las
+laptops solo necesitan la URL, un usuario y una contraseña en `.env`; nunca credenciales de Azure.
+Todo se define en Bicep en [`infra/`](infra/) y se despliega con `make infra-deploy`; el detalle de
+la arquitectura, el acceso y la operación está en [`infra/README.md`](infra/README.md) y la fuente
+del diagrama en [`references/infraestructura_nube.mmd`](references/infraestructura_nube.mmd).
 
 El *pipeline* por pregunta y la justificación de cada herramienta con las lecturas del curso
 están en las secciones [5](docs/entregas/entrega01/secciones/05-pipeline.md) y
@@ -273,7 +286,9 @@ carpeta. No se instala nada fuera de [`requirements.txt`](requirements.txt).
 
 MLflow lee `MLFLOW_TRACKING_URI` de un archivo `.env` opcional (con `python-dotenv`). Sin
 `.env`, escribe en la base local `mlflow.db` (SQLite) con los artefactos en `mlartifacts/`, y no
-se necesita ninguna credencial. `.env` está excluido de Git; en el repositorio solo entra un
+se necesita ninguna credencial. Con `.env`, registra en el
+[servidor compartido del equipo](#servidor-compartido-del-equipo-en-azure) con el usuario y la
+contraseña de cada integrante. `.env` está excluido de Git; en el repositorio solo entra un
 [`.env.example`](.env.example) con los nombres de las variables.
 
 ## Comandos
@@ -289,6 +304,9 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make train` | `python -m mibici.modeling.train all` (o `p1`, `p2`, `p3` para una sola pregunta) | **Experimento base.** Construye en memoria las tablas de P1, P2 y P3, entrena el *baseline* de cada pregunta con partición cronológica, lo evalúa, guarda el modelo en `models/` y registra el *run* en MLflow. |
 | `python -m mibici.modeling.predict p1` (o `p2`, `p3`) | — | **Inferencia.** Carga el modelo de `models/`, reconstruye la tabla de la pregunta y escribe las predicciones del conjunto de prueba (P1 y P2) o el grupo de cada estación (P3) en `data/processed/`. |
 | `mlflow ui --backend-store-uri sqlite:///mlflow.db` | — | Abre la interfaz de MLflow en <http://127.0.0.1:5000> sobre la base local. |
+| `make infra-check` | `python infra/scripts/check_server.py` | **Prueba de conexión** al servidor compartido con las credenciales del `.env`: crea un *run* de prueba con un artefacto y lo vuelve a leer. |
+| `make mlflow-password` | `python infra/scripts/change_password.py` | Cambia tu propia contraseña en el servidor compartido (sin Azure). |
+| `make infra-*` | `az ...` | Despliegue y mantenimiento del servidor en Azure; solo para quien administra la suscripción. Ver [`infra/README.md`](infra/README.md). |
 | `make lint` / `make format` | `ruff format --check && ruff check` / `ruff check --fix && ruff format` | Verifica o corrige el estilo del código. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 
@@ -307,7 +325,8 @@ El experimento se ejecuta desde el código del repositorio (`train.py`), nunca s
 - **Métricas con el conjunto como prefijo:** `train_`, `val_` y `test_` de `mae` y `rmse` (P1);
   `recall`, `precision` y `avg_precision` de las clases `vaciarse` y `llenarse` y `f1_macro`
   (P2); `train_silhouette` y `train_davies_bouldin`, más sus curvas por `k` (P3).
-- **Etiquetas:** `equipo=equipo10`, `pregunta` (`P1`, `P2` o `P3`), `git_commit` con el SHA del
+- **Etiquetas:** `equipo=equipo10`, `usuario` (quién ejecutó el *run*: el usuario del servidor
+  compartido o, en modo local, el del sistema), `pregunta` (`P1`, `P2` o `P3`), `git_commit` con el SHA del
   commit que lo ejecutó, `git_cambios_sin_commit` y `tipo_modelo` (`baseline` o `candidato`).
 - **Conjunto de datos como entrada del *run*:** el *dataset* `datapackage`, con
   `version_datos` como huella, en la pestaña *Datasets* de la interfaz.
@@ -327,18 +346,41 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db  # revisa los runs en http://1
 Las capturas de la interfaz (lista de *runs*, detalle de un *run*, artefacto y comparación)
 se guardan en `docs/entregas/entrega01/figuras/` para el PDF de la propuesta.
 
+### Servidor compartido del equipo en Azure
+
+Para que los *runs* de todos los integrantes queden en el mismo lugar, el equipo tiene un
+**MLflow Tracking Server propio en Azure**: la imagen oficial de MLflow en Azure Container
+Apps, los metadatos en Azure Database for PostgreSQL y los artefactos en Azure Blob Storage.
+Es la misma interfaz que el modo local; la infraestructura se define en Bicep en
+[`infra/`](infra/) y se despliega con `make infra-deploy` (detalle en
+[`infra/README.md`](infra/README.md)).
+
+Cómo se conecta un integrante:
+
+1. Pide a quien administra el servidor tu usuario y contraseña inicial (una por persona; el
+   equipo tiene además un usuario de solo lectura para quien califica). La lista de usuarios
+   no se versiona: solo la tiene quien administra el servidor.
+2. Copia [`.env.example`](.env.example) a `.env` y llena `MLFLOW_TRACKING_URI`,
+   `MLFLOW_TRACKING_USERNAME` y `MLFLOW_TRACKING_PASSWORD`. No se necesita ninguna cuenta ni
+   credencial de Azure: los artefactos viajan a través del servidor.
+3. `make infra-check` confirma la conexión; a partir de ahí `make train` registra en el servidor
+   sin cambiar nada más. La interfaz está en la misma URL, con el mismo usuario y contraseña.
+4. `make mlflow-password` cambia tu contraseña cuando quieras.
+
+Sin `.env`, todo sigue funcionando en modo local, que es el modo para iterar y depurar.
+
 ## Estructura del proyecto
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
 (`ccds`, con `include_code_scaffold = Yes`).
 
 ```
-├── Makefile              <- Reglas: data, train, lint, format, entrega01
+├── Makefile              <- Reglas: data, snapshot, validate, train, lint, format, entrega01, infra-*, mlflow-password
 ├── README.md             <- Este documento
 ├── pyproject.toml        <- Metadatos del paquete `mibici` y configuración de Ruff
 ├── requirements.txt      <- Dependencias con versión fija para reproducir el entorno
-├── .gitignore            <- Excluye data/, mlruns/, mlartifacts/, mlflow.db, .env y modelos serializados
-├── .env.example          <- Nombres de las variables de entorno de MLflow (sin valores)
+├── .gitignore            <- Excluye data/, mlruns/, mlartifacts/, mlflow.db, .env, modelos serializados y secretos de infra/
+├── .env.example          <- Variables de entorno para conectarse al servidor MLflow del equipo (sin credenciales)
 ├── datapackage.json      <- Versión de datos (Frictionless Data Package): URL, bytes, SHA-256 y esquema de cada CSV y Parquet; lo escribe `make snapshot`
 │
 ├── data                  <- Excluida de Git; la genera `make data`
@@ -352,11 +394,17 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   │   └── entrega01     <- Propuesta: secciones en Markdown, figuras y capturas de MLflow
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
+├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
+│   ├── main.bicep        <- Container Apps + PostgreSQL + Blob Storage + Managed Identity
+│   ├── main.bicepparam   <- Parámetros no secretos (región, imagen); los secretos salen de infra/.secrets.env (fuera de Git)
+│   ├── users.example.txt <- Formato de la lista de usuarios; la lista real (users.txt) no se versiona
+│   └── scripts           <- generate_secrets.sh, create_users.py, change_password.py, check_server.py
+│
 ├── models                <- Modelos serializados; excluidos de Git
 │
 ├── notebooks             <- Solo exploración: `1.0-gsg-descarga-dataset.ipynb` y `2.0-gsg-exploracion-variables.ipynb`
 │
-├── references            <- ML Canvas (html, pdf y png) y diagramas de arquitectura y trazabilidad (mmd y png)
+├── references            <- ML Canvas (html, pdf y png) y diagramas de arquitectura, trazabilidad e infraestructura en la nube (mmd y png)
 │
 ├── reports               <- Análisis generados (HTML, PDF, etc.)
 │   └── figures           <- Gráficas y figuras para los reportes
@@ -381,7 +429,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 |---|---|---|---|
 | MLflow Tracking | Un experimento por proyecto y *runs* con nombre descriptivo. | Experimento `mibici-equipo10`; nombres `P{n}-{etapa}-{modelo}` fijados en `train.py`. | Interfaz de MLflow. |
 | MLflow Tracking | Registrar todo lo necesario para reproducir el *run*. | Parámetros `version_datos`, fechas de la partición, `semilla`, modelo e hiperparámetros, tomados de `config.py` y de `datapackage.json`; el *dataset* como entrada del *run*. | Parámetros y pestaña *Datasets* del *run*. |
-| MLflow Tracking | Ligar cada *run* con el código y la pregunta. | Etiquetas `git_commit`, `pregunta`, `equipo` y `tipo_modelo`. | Etiquetas del *run*. |
+| MLflow Tracking | Ligar cada *run* con el código, la pregunta y quien lo ejecutó. | Etiquetas `git_commit`, `pregunta`, `equipo`, `usuario` y `tipo_modelo`. | Etiquetas del *run*. |
 | MLflow Tracking | Métricas con el conjunto en el nombre. | `test_mae`, `test_recall_vaciarse`, `train_silhouette`, etc. | Métricas del *run*. |
 | MLflow Tracking | Sin credenciales ni datos personales. | La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento`; `.env` está fuera de Git. | Interfaz de MLflow y código. |
 | Estructura y código | *Notebooks* solo para exploración, con la convención de la plantilla. | La lógica final vive en `mibici/`; los *notebooks* se nombran `numero.version-iniciales-descripcion.ipynb`. | Carpeta `notebooks/`. |
@@ -478,8 +526,8 @@ rutas absolutas ni datos personales.
 | `chore` | mantenimiento que no toca el código fuente |
 | `revert` | revierte un commit anterior, citando su SHA en el pie |
 
-Ámbitos del proyecto: `dataset`, `features`, `config`, `modeling`, `mlflow`, `notebooks`,
-`readme`, `entregas`, `references`, `deps`.
+Ámbitos del proyecto: `dataset`, `features`, `config`, `modeling`, `mlflow`, `infra`,
+`notebooks`, `readme`, `entregas`, `references`, `deps`.
 
 ```
 feat(dataset): descarga los CSV mensuales y los guarda en Parquet

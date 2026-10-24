@@ -1,0 +1,32 @@
+%% Flujo de un run contra el servidor MLflow compartido · Proyecto MiBici · TC5061 Equipo 10
+%% Fuente de la figura de infra/README.md. Se exporta a infraestructura_nube_run.png con mermaid-cli (ver docs/entregas/entrega01/README.md).
+%% Sin URL, usuarios ni secretos.
+sequenceDiagram
+  autonumber
+  actor Dev as Integrante<br/>(laptop, .env)
+  participant Train as train.py<br/>cliente MLflow 3.4
+  participant App as Container App<br/>mlflow server · basic-auth
+  participant PG as PostgreSQL<br/>metadatos y usuarios
+  participant Blob as Blob Storage<br/>mlflow-artifacts
+
+  Dev->>Train: make train
+  Train->>App: POST runs/create (HTTPS, usuario y contraseña)
+  App->>PG: ¿credenciales válidas? ¿permiso EDIT en el experimento?
+  PG-->>App: sí (resultado en caché 60 s)
+  App->>PG: INSERT run · tags: usuario, git_commit, pregunta, equipo
+  App-->>Train: run_id
+  Train->>App: POST log-batch (params y métricas)
+  App->>PG: INSERT params y métricas
+  Train->>App: POST upload-artifact (modelo .joblib, figuras, CSV)
+  App->>Blob: PUT con Managed Identity (wasbs://)
+  Blob-->>App: OK
+  Train->>App: POST runs/update (FINISHED)
+  App->>PG: UPDATE run
+  App-->>Train: OK
+
+  Note over Dev,Blob: La laptop solo habla con el servidor: nunca necesita credenciales de Azure.
+
+  Dev->>App: GET / en el navegador (misma URL, mismas credenciales)
+  App->>PG: SELECT runs, métricas, tags
+  App->>Blob: GET artefacto para mostrarlo o descargarlo
+  App-->>Dev: interfaz de MLflow con los runs de todo el equipo
