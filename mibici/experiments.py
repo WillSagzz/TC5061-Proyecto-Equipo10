@@ -1,30 +1,21 @@
-"""Convención de MLflow del proyecto: experimentos, nombres de run, etiquetas y notas.
+"""Convención de MLflow del proyecto: experimentos, nombre, etiquetas y nota de cada run.
 
-Todo lo que identifica un run vive aquí, en un solo lugar, para que ``train.py`` y
-``dataset.py`` lo escriban igual y los runs se filtren con las mismas llaves:
+``open_run`` abre (o reanuda, bajo ``mlflow run``) el run de una pregunta en su experimento;
+``run_name``, ``standard_tags`` y ``run_note`` dan el nombre, las etiquetas y la nota.
 
-- ``ensure_experiment``: crea (o completa) el experimento de una pregunta con su descripción y
-  etiquetas. Los nombres salen de ``EXPERIMENTS`` en ``config.py``.
-- ``run_name``, ``standard_tags`` y ``run_note``: nombre, etiquetas y nota de cada run. El
-  nombre es una etiqueta para humanos (``P1-candidato-rf``); los parámetros distinguen dos
-  runs con el mismo nombre y el identificador del run es su identidad.
-- ``ProjectExperimentProvider``: elige el experimento cuando el proyecto se ejecuta con
-  ``mlflow run``. MLflow crea el run antes de lanzar el código del punto de entrada, así que
-  ningún comando del proyecto puede escoger el experimento; en su lugar MLflow consulta a los
-  *default experiment providers* registrados (grupo ``mlflow.default_experiment_provider`` en
-  ``pyproject.toml``) cuando no se pasó ``--experiment-name`` ni ``MLFLOW_EXPERIMENT_NAME``.
-  Este proveedor lee la línea de comandos de ``mlflow run``, reconoce el proyecto y la
-  pregunta (``-P question=p1``) o el punto de entrada ``ingest`` y devuelve el experimento que
-  corresponde. Fuera de ``mlflow run`` de este proyecto no interviene.
-
-El módulo lo importa el propio comando ``mlflow`` al arrancar (por el *entry point*), por eso
-carga ``.env`` al importarse: así ``mlflow run`` ya conoce el servidor y las credenciales
-antes de crear el run, sin exportar variables a mano. Lo demás se importa dentro de las
-funciones para no encarecer cualquier otro comando de ``mlflow``.
+``ProjectExperimentProvider`` elige el experimento cuando el proyecto corre con ``mlflow run``:
+MLflow crea el run antes de lanzar el punto de entrada y, si no se pasó ``--experiment-name``,
+consulta a los proveedores registrados en el grupo ``mlflow.default_experiment_provider``
+(``pyproject.toml``). Este lee la línea de comandos, reconoce el proyecto y la pregunta o el
+punto de entrada ``ingest``, y devuelve el experimento. Como el comando ``mlflow`` importa este
+módulo al arrancar, aquí se carga ``.env``; lo demás se importa dentro de las funciones.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -33,15 +24,12 @@ from dotenv import load_dotenv
 from mlflow.tracking.default_experiment.abstract_context import DefaultExperimentProvider
 
 PROJ_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(PROJ_ROOT / ".env", override=False)
 
-# Valor de la etiqueta `pregunta` por experimento
-QUESTION_LABELS = {"p1": "P1", "p2": "P2", "p3": "P3", "ingesta": "datos"}
-STAGES = ("baseline", "candidato")  # valores de la etiqueta `tipo_modelo`
-NOTE_TAG = "mlflow.note.content"  # descripción que MLflow muestra en la interfaz
+QUESTION_LABELS = {"p1": "P1", "p2": "P2", "p3": "P3", "ingesta": "datos"}  # etiqueta `pregunta`
+STAGES = ("baseline", "candidato")  # etiqueta `tipo_modelo`
+NOTE_TAG = "mlflow.note.content"
 
-# Opciones de `mlflow run` que llevan un valor en el token siguiente (para separar la ruta
-# del proyecto de las opciones al leer la línea de comandos)
+# Opciones de `mlflow run` que llevan valor en el token siguiente
 _RUN_OPTIONS_WITH_VALUE = {
     "-e",
     "--entry-point",
@@ -64,11 +52,15 @@ _RUN_OPTIONS_WITH_VALUE = {
 }
 
 
+class ExperimentMismatchError(RuntimeError):
+    """El run que creó ``mlflow run`` está en un experimento distinto al de la pregunta."""
+
+
 # -----------------------------------------------------------------------------
 # Experimentos
 # -----------------------------------------------------------------------------
 def experiment_tags(key: str) -> dict[str, str]:
-    """Descripción y etiquetas del experimento de una pregunta (o de la ingesta)."""
+    """Descripción y etiquetas del experimento de ``key`` (``p1``, ``p2``, ``p3`` o ``ingesta``)."""
     from mibici.config import EXPERIMENT_DESCRIPTIONS, EXPERIMENT_TASKS, TEAM
 
     return {
@@ -80,12 +72,10 @@ def experiment_tags(key: str) -> dict[str, str]:
 
 
 def ensure_experiment(key: str) -> str:
-    """Devuelve el id del experimento de ``key`` (``p1``, ``p2``, ``p3`` o ``ingesta``).
+    """Devuelve el id del experimento de ``key``; lo crea con sus etiquetas si no existe.
 
-    Lo crea si no existe, con su descripción y etiquetas, y completa las etiquetas que falten
-    si ya existía (por ejemplo, si lo creó el script de administración del servidor). En modo
-    local (SQLite) los artefactos van a ``mlartifacts/``. Es idempotente y puede llamarse con
-    cualquier usuario: si el usuario no puede etiquetar, lo avisa y sigue.
+    Si ya existía completa las etiquetas que falten. En modo local (SQLite) los artefactos van
+    a ``mlartifacts/``. Un usuario sin permiso para etiquetar recibe un aviso y sigue.
     """
     import mlflow
     from mlflow.exceptions import MlflowException
@@ -103,21 +93,22 @@ def ensure_experiment(key: str) -> str:
             else None
         )
         return client.create_experiment(name, artifact_location=location, tags=tags)
-    missing = {k: v for k, v in tags.items() if k not in experiment.tags}
-    for tag_key, value in missing.items():
+    for tag_key, value in tags.items():
+        if tag_key in experiment.tags:
+            continue
         try:
             client.set_experiment_tag(experiment.experiment_id, tag_key, value)
-        except MlflowException as error:  # usuario de solo lectura
+        except MlflowException as error:
             print(f"No se pudo etiquetar el experimento {name}: {error}", file=sys.stderr)
             break
     return experiment.experiment_id
 
 
 # -----------------------------------------------------------------------------
-# Runs: nombre, etiquetas y nota
+# Runs
 # -----------------------------------------------------------------------------
 def git_state() -> tuple[str, bool]:
-    """Commit actual y si hay cambios sin commit (un run así no es reproducible)."""
+    """Commit actual y si hay cambios sin commit."""
     try:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=PROJ_ROOT, capture_output=True, text=True, check=True
@@ -135,16 +126,10 @@ def git_state() -> tuple[str, bool]:
 
 
 def run_name(key: str, stage: str | None = None, label: str | None = None) -> str:
-    """Nombre del run: ``P{n}-{etapa}-{modelo}`` al entrenar, ``ingesta-{version}`` al ingerir.
+    """``P{n}-{etapa}-{estimador}`` al entrenar, ``ingesta-{version}`` al ingerir.
 
-    Es una etiqueta estable y legible, no un identificador: no lleva hiperparámetros ni
-    fechas, que ya son parámetros del run.
-
-    Args:
-        key: ``p1``, ``p2``, ``p3`` o ``ingesta``.
-        stage: ``baseline`` o ``candidato`` (entrenamiento).
-        label: Nombre del estimador en el catálogo (entrenamiento) o versión de los datos
-            (ingesta).
+    Es un nombre legible, no un identificador: no lleva hiperparámetros ni fechas, que son
+    parámetros del run.
     """
     if key == "ingesta":
         return f"ingesta-{label}"
@@ -156,29 +141,14 @@ def run_name(key: str, stage: str | None = None, label: str | None = None) -> st
 def standard_tags(
     key: str, estimator: str | None = None, stage: str | None = None
 ) -> dict[str, str]:
-    """Etiquetas comunes a todos los runs del proyecto.
+    """Etiquetas comunes: ``equipo``, ``mlflow.user``, ``pregunta`` y, al entrenar, ``estimador`` y ``tipo_modelo``.
 
-    Solo lo que sirve para filtrar y MLflow no registra bien por su cuenta: ``equipo``,
-    ``mlflow.user`` (quién lo ejecutó: el usuario del servidor compartido en lugar de la
-    cuenta del sistema que pone MLflow), ``pregunta``, ``git_commit`` y
-    ``git_cambios_sin_commit`` (MLflow solo registra el commit bajo ``mlflow run``), y al
-    entrenar ``estimador`` y ``tipo_modelo``. Lo que define el modelo (versión de datos,
-    fechas, semilla, hiperparámetros) son parámetros, no etiquetas.
+    ``mlflow.user`` lleva el usuario del servidor compartido: MLflow la llena con la cuenta del
+    sistema al crear el run y es lo que la interfaz muestra en la columna "User".
     """
     from mibici.config import MLFLOW_RUN_USER, TEAM
 
-    commit, uncommitted = git_state()
-    tags = {
-        "equipo": TEAM,
-        # Quién lo ejecutó. MLflow llena mlflow.user con la cuenta del sistema operativo al
-        # crear el run (bajo `mlflow run`, antes de que corra el proyecto); se sobrescribe con
-        # el usuario del servidor, que es lo que la interfaz muestra en la columna "User" y
-        # por lo que se filtra (tags."mlflow.user" = "nombre").
-        "mlflow.user": MLFLOW_RUN_USER,
-        "pregunta": QUESTION_LABELS[key],
-        "git_commit": commit,
-        "git_cambios_sin_commit": str(uncommitted),
-    }
+    tags = {"equipo": TEAM, "mlflow.user": MLFLOW_RUN_USER, "pregunta": QUESTION_LABELS[key]}
     if estimator is not None:
         tags["estimador"] = estimator
     if stage is not None:
@@ -187,7 +157,7 @@ def standard_tags(
 
 
 def run_note(key: str, data_version: str, estimator: str | None = None, **details: object) -> str:
-    """Una línea para la nota del run (``mlflow.note.content``), visible en la interfaz."""
+    """Una línea para la nota del run (``mlflow.note.content``)."""
     if key == "ingesta":
         return f"Ingesta de la versión {data_version} de los datos (datapackage.json)"
     parts = [QUESTION_LABELS[key]]
@@ -198,16 +168,55 @@ def run_note(key: str, data_version: str, estimator: str | None = None, **detail
     return " · ".join(parts)
 
 
+@contextmanager
+def open_run(key: str, label: str, tags: dict[str, str], note: str) -> Iterator:
+    """Abre el run de ``key`` en su experimento con nombre, etiquetas, nota y estado de Git.
+
+    Bajo ``mlflow run`` reanuda el run que creó la línea de comandos (``MLFLOW_RUN_ID``) y
+    comprueba que esté en el experimento de la pregunta; si no, lanza
+    ``ExperimentMismatchError`` antes de registrar nada. Sin ``mlflow run`` crea o selecciona
+    el experimento y abre un run nuevo.
+    """
+    from loguru import logger
+    import mlflow
+
+    from mibici.config import EXPERIMENTS, MLFLOW_TRACKING_URI
+
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    expected = EXPERIMENTS[key]
+    run_id = os.getenv("MLFLOW_RUN_ID")
+    if run_id:
+        client = mlflow.MlflowClient()
+        actual = client.get_experiment(client.get_run(run_id).info.experiment_id).name
+        if actual != expected:
+            raise ExperimentMismatchError(
+                f"El run de mlflow run está en el experimento '{actual}' y {key} pertenece a "
+                f"'{expected}'. Quita --experiment-name (el proyecto lo elige solo) o usa "
+                f"--experiment-name {expected}."
+            )
+    else:
+        ensure_experiment(key)
+        mlflow.set_experiment(expected)
+
+    commit, uncommitted = git_state()
+    if uncommitted:
+        logger.warning("Hay cambios sin commit: haz commit antes del run definitivo")
+    with mlflow.start_run(run_name=label) as run:
+        if run.info.run_name != label:
+            mlflow.set_tag("mlflow.runName", label)
+        mlflow.set_tags(
+            tags
+            | {"git_commit": commit, "git_cambios_sin_commit": str(uncommitted), NOTE_TAG: note}
+        )
+        yield run
+    logger.success(f"Run '{label}' registrado en '{expected}'")
+
+
 # -----------------------------------------------------------------------------
 # Proveedor del experimento para `mlflow run`
 # -----------------------------------------------------------------------------
 def parse_mlflow_run_argv(argv: list[str]) -> dict[str, str] | None:
-    """Lee la línea de comandos de ``mlflow run`` y devuelve ruta, punto de entrada y parámetros.
-
-    Returns:
-        ``{"uri": ..., "entry_point": ..., "<parámetro>": ...}`` o ``None`` si no es
-        ``mlflow run``.
-    """
+    """Ruta, punto de entrada y parámetros de una línea de comandos ``mlflow run``; ``None`` si no lo es."""
     if len(argv) < 2 or argv[1] != "run":
         return None
     parsed: dict[str, str] = {"entry_point": "main"}
@@ -221,7 +230,7 @@ def parse_mlflow_run_argv(argv: list[str]) -> dict[str, str] | None:
                 and len(token) > 2
                 and token[:2] in _RUN_OPTIONS_WITH_VALUE
             ):
-                option, value = token[:2], token[2:]  # forma pegada: -Pquestion=p1, -etrain
+                option, value = token[:2], token[2:]  # forma pegada: -Pquestion=p1
             else:
                 option, _, value = token.partition("=")
             if not value and option in _RUN_OPTIONS_WITH_VALUE:
@@ -238,49 +247,66 @@ def parse_mlflow_run_argv(argv: list[str]) -> dict[str, str] | None:
     return parsed
 
 
+def _is_this_project(uri: str) -> bool:
+    manifest = Path(uri).expanduser().resolve() / "MLproject"
+    try:
+        return manifest.samefile(PROJ_ROOT / "MLproject")
+    except OSError:
+        return False
+
+
+def is_project_run(argv: list[str]) -> bool:
+    """``True`` si la línea de comandos es un ``mlflow run`` de este proyecto."""
+    parsed = parse_mlflow_run_argv(argv)
+    return parsed is not None and _is_this_project(parsed.get("uri", "."))
+
+
+def project_run_key(argv: list[str]) -> str | None:
+    """Experimento (``p1``, ``p2``, ``p3`` o ``ingesta``) que pide un ``mlflow run`` de este proyecto."""
+    parsed = parse_mlflow_run_argv(argv)
+    if parsed is None or not _is_this_project(parsed.get("uri", ".")):
+        return None
+    if parsed["entry_point"] == "ingest":
+        return "ingesta"
+    question = parsed.get("question", "")
+    return question if question in ("p1", "p2", "p3") else None
+
+
 class ProjectExperimentProvider(DefaultExperimentProvider):
     """Elige el experimento de ``mlflow run`` a partir de la pregunta o del punto de entrada.
 
-    Solo actúa cuando el comando es ``mlflow run`` de este proyecto (la ruta contiene el
-    ``MLproject`` del paquete) y la línea de comandos trae ``-P question=p1|p2|p3`` o el punto
-    de entrada ``ingest``. Si se pasó ``--experiment-name`` o ``--experiment-id``, MLflow ni
-    siquiera consulta a los proveedores y se respeta lo pedido.
+    Solo actúa en ``mlflow run`` de este proyecto con ``-P question=p1|p2|p3`` o el punto de
+    entrada ``ingest``; con ``--experiment-name`` MLflow no consulta a los proveedores.
     """
 
-    def _experiment_key(self) -> str | None:
-        parsed = parse_mlflow_run_argv(sys.argv)
-        if parsed is None or not self._is_this_project(parsed.get("uri", ".")):
-            return None
-        if parsed["entry_point"] == "ingest":
-            return "ingesta"
-        question = parsed.get("question", "").lower()
-        return question if question in ("p1", "p2", "p3") else None
-
-    @staticmethod
-    def _is_this_project(uri: str) -> bool:
-        manifest = Path(uri).expanduser().resolve() / "MLproject"
-        try:
-            return manifest.samefile(PROJ_ROOT / "MLproject")
-        except OSError:
-            return False
-
     def in_context(self) -> bool:
-        return self._experiment_key() is not None
+        return project_run_key(sys.argv) is not None
 
     def get_experiment_id(self) -> str | None:
-        key = self._experiment_key()
+        key = project_run_key(sys.argv)
         return ensure_experiment(key) if key else None
 
+
+# El comando `mlflow` importa este módulo al arrancar: aquí conoce el .env y, en un `mlflow run`
+# de este proyecto sin servidor configurado, la misma base SQLite que usa config.py (sin esto
+# el run iría a ./mlruns, el valor por defecto de MLflow).
+load_dotenv(PROJ_ROOT / ".env", override=False)
+if is_project_run(sys.argv):
+    os.environ.setdefault("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
 
 __all__ = [
     "NOTE_TAG",
     "QUESTION_LABELS",
     "STAGES",
+    "ExperimentMismatchError",
     "ProjectExperimentProvider",
     "ensure_experiment",
     "experiment_tags",
     "git_state",
+    "is_project_run",
+    "open_run",
     "parse_mlflow_run_argv",
+    "project_run_key",
     "run_name",
     "run_note",
     "standard_tags",

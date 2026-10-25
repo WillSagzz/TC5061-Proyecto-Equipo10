@@ -6,10 +6,7 @@ PROJECT_NAME = TC5061-Proyecto-Equipo10
 PYTHON_VERSION = 3.12
 PYTHON_INTERPRETER = python
 
-# Todas las corridas se lanzan desde el MLflow Project (MLproject). --env-manager local usa el
-# entorno activado (el gestor por defecto, virtualenv, necesita pyenv para instalar la versión
-# de Python de python_env.yaml). El experimento de cada run lo elige el proyecto a partir de
-# la pregunta (mibici/experiments.py); el servidor y las credenciales salen del .env.
+# --env-manager local: usa el entorno activado (el gestor por defecto necesita pyenv)
 MLFLOW_RUN = mlflow run . --env-manager local
 
 # Servidor MLflow compartido en Azure (infra/). Solo lo usa quien administra la suscripción.

@@ -1,30 +1,23 @@
 name: mibici-equipo10
 
-# Entorno con las mismas versiones fijas de requirements.txt (una sola fuente de verdad).
 python_env: python_env.yaml
 
-# Rutas, fechas y semillas no aparecen aquí: salen de mibici/config.py. El experimento de
-# cada run (uno por pregunta) también lo elige el proyecto a partir de `question`
-# (mibici/experiments.py), así que no hace falta --experiment-name.
 entry_points:
-  # Reconstruye la versión de datos de datapackage.json (descarga, verifica, limpia, Parquet)
   ingest:
     command: "python -m mibici.dataset"
 
-  # Entrena un modelo de una pregunta y registra el run. `model` es el estimador del catálogo
-  # de train.py: baseline (configuración fija de la propuesta, sin hiperparámetros), rf o hgb
-  # (P1 y P2) y kmeans (P3). Un hiperparámetro vacío toma el valor por defecto del estimador o
-  # de config.py.
+  # `model` es un estimador del catálogo de train.py (baseline, rf, hgb, kmeans); un
+  # hiperparámetro vacío toma el valor por defecto. MLflow entrecomilla cada valor, por eso
+  # el comando no los cita.
   train:
     parameters:
-      question: string                      # p1, p2 o p3
+      question: string
       model: {type: string, default: baseline}
       n_estimators: {type: string, default: ""}
       max_iter: {type: string, default: ""}
       max_depth: {type: string, default: ""}
       learning_rate: {type: string, default: ""}
       n_clusters: {type: string, default: ""}
-    # MLflow entrecomilla cada valor por su cuenta (también el vacío), así que aquí no se citan.
     command: >-
       python -m mibici.modeling.train {question}
       --model {model}

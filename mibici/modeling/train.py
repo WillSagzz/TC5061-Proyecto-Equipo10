@@ -1,31 +1,23 @@
 """Entrena un modelo de una pregunta y lo registra en MLflow Tracking.
 
-La forma oficial de correrlo es el MLflow Project de la raíz (``MLproject``), que fija el
-entorno y registra el commit, el punto de entrada y los parámetros del run:
+Se ejecuta desde el MLflow Project de la raíz (``MLproject``), que registra el commit, el
+punto de entrada y los parámetros del run, o directo para depurar, con la misma interfaz:
 
-    mlflow run . -e train -P question=p1                      # baseline de P1
     mlflow run . -e train -P question=p1 -P model=rf -P n_estimators=300
-    mlflow run . -e train -P question=p3 -P model=kmeans -P n_clusters=6
-
-El experimento (uno por pregunta, ``EXPERIMENTS`` en ``config.py``) lo elige el proyecto a
-partir de la pregunta; no hay que indicarlo. Para depurar también puede llamarse directo, con
-la misma interfaz:
-
     python -m mibici.modeling.train p1 --model rf --n-estimators 300
 
-``model`` es el estimador del catálogo (``CATALOGUE``): ``baseline`` reproduce la
-configuración fija de la propuesta y no admite hiperparámetros; los demás son candidatos y
-aceptan solo los hiperparámetros que les corresponden. Un run es un modelo entrenado: el
-estimador con sus hiperparámetros, las variables, la versión de los datos y el commit. Las
-fechas de la partición, la semilla y los valores por defecto salen de ``config.py``.
+``model`` es un estimador del catálogo (``CATALOGUE``): ``baseline`` es la configuración fija
+de la propuesta y no admite hiperparámetros; los demás son candidatos y aceptan solo los
+suyos. Un run es un modelo entrenado: estimador, hiperparámetros, variables, versión de los
+datos y commit. Experimento, nombre y etiquetas los pone ``experiments.py``; fechas, semilla y
+valores por defecto salen de ``config.py``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-import os
 from typing import Annotated, Any
 
 import joblib
@@ -58,10 +50,8 @@ from mibici.config import (
     DATA_END,
     DATAPACKAGE_PATH,
     DAY_PERIODS,
-    EXPERIMENTS,
     FIGURES_DIR,
     MIBICI_DATA_PAGE,
-    MLFLOW_TRACKING_URI,
     MODELS_DIR,
     P3_K_VALUES,
     P3_N_CLUSTERS,
@@ -71,8 +61,8 @@ from mibici.config import (
     VALIDATION_START,
 )
 from mibici.experiments import (
-    NOTE_TAG,
-    ensure_experiment,
+    ExperimentMismatchError,
+    open_run,
     run_name,
     run_note,
     standard_tags,
@@ -113,10 +103,9 @@ def main() -> None:
 
 
 # -----------------------------------------------------------------------------
-# Catálogo de estimadores: qué puede pedirse con --model y con qué hiperparámetros
+# Catálogo de estimadores
 # -----------------------------------------------------------------------------
 BASELINE = "baseline"
-# Tipo de cada hiperparámetro que acepta la línea de comandos (llegan como texto)
 HYPERPARAMETER_TYPES: dict[str, Callable[[str], Any]] = {
     "n_estimators": int,
     "max_iter": int,
@@ -128,13 +117,7 @@ HYPERPARAMETER_TYPES: dict[str, Callable[[str], Any]] = {
 
 @dataclass(frozen=True)
 class Estimator:
-    """Una entrada del catálogo.
-
-    Args:
-        label: Nombre que lleva el run (``P1-candidato-{label}``).
-        build: Construye el modelo sin entrenar con los hiperparámetros ya convertidos.
-        hyperparameters: Hiperparámetros que acepta; los demás se rechazan.
-    """
+    """Entrada del catálogo: nombre que lleva el run, constructor e hiperparámetros que acepta."""
 
     label: str
     build: Callable[..., Any]
@@ -180,12 +163,7 @@ CATALOGUE: dict[str, dict[str, Estimator]] = {
 
 
 def parse_hyperparameters(**raw: str) -> dict[str, Any]:
-    """Convierte los hiperparámetros de la línea de comandos; el texto vacío es "sin valor".
-
-    El MLproject sustituye una cadena vacía cuando un parámetro no se pasa, así que todos
-    llegan como texto y aquí se descartan los vacíos y se convierten los demás con
-    ``HYPERPARAMETER_TYPES``. En Windows, ``mlflow run`` entrega el vacío como dos comillas
-    literales (``""``), por eso se quitan las comillas antes de decidir si hay valor.
+    """Convierte los hiperparámetros recibidos como texto; vacío (o solo comillas) es "sin valor".
 
     Raises:
         typer.BadParameter: Si un valor no tiene el tipo esperado.
@@ -206,19 +184,11 @@ def parse_hyperparameters(**raw: str) -> dict[str, Any]:
 def build_model(
     question: str, name: str, hyperparameters: dict[str, Any]
 ) -> tuple[Any, Estimator]:
-    """Construye el modelo pedido y valida el estimador y sus hiperparámetros.
-
-    Args:
-        question: ``p1``, ``p2`` o ``p3``.
-        name: Estimador del catálogo (``baseline``, ``rf``, ``hgb``, ``kmeans``).
-        hyperparameters: Hiperparámetros ya convertidos (``parse_hyperparameters``).
-
-    Returns:
-        El modelo sin entrenar y su entrada del catálogo.
+    """Construye el modelo pedido; valida el estimador y sus hiperparámetros contra el catálogo.
 
     Raises:
-        typer.BadParameter: Si el estimador no existe para la pregunta, si ``baseline``
-            recibe hiperparámetros o si algún hiperparámetro no aplica al estimador.
+        typer.BadParameter: Si el estimador no existe para la pregunta, si ``baseline`` recibe
+            hiperparámetros o si alguno no aplica al estimador.
     """
     options = CATALOGUE[question]
     if name not in options:
@@ -243,55 +213,24 @@ def build_model(
 # -----------------------------------------------------------------------------
 # Utilidades de MLflow, compartidas por P1, P2 y P3
 # -----------------------------------------------------------------------------
-def _resolve_experiment(question: str) -> None:
-    """Deja MLflow apuntando al experimento de la pregunta, o comprueba que ya lo esté.
-
-    Bajo ``mlflow run`` el run ya existe (``MLFLOW_RUN_ID``) en el experimento que eligió la
-    línea de comandos; si no es el de la pregunta, se detiene con el comando correcto en vez
-    de registrar en el lugar equivocado. Sin ``mlflow run``, crea o selecciona el experimento.
-    """
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    expected = EXPERIMENTS[question]
-    run_id = os.getenv("MLFLOW_RUN_ID")
-    if not run_id:
-        ensure_experiment(question)
-        mlflow.set_experiment(expected)
-        return
-    client = mlflow.MlflowClient()
-    actual = client.get_experiment(client.get_run(run_id).info.experiment_id).name
-    if actual != expected:
-        logger.error(
-            f"El run de mlflow run está en el experimento '{actual}' y {question} pertenece a "
-            f"'{expected}'. Quita --experiment-name (el proyecto lo elige solo) o usa "
-            f"--experiment-name {expected}."
-        )
-        raise typer.Exit(code=1)
-    ensure_experiment(question)  # completa descripción y etiquetas si faltan
-
-
 @contextmanager
 def _start_run(question: str, name: str, estimator: Estimator, hyperparameters: dict[str, Any]):
-    """Abre el run de un modelo con el nombre, las etiquetas y los parámetros comunes.
-
-    Nombre ``P{n}-{etapa}-{estimador}`` y etiquetas de ``experiments.py``; parámetros: fechas
-    de la partición, versión de los datos y semilla; el conjunto de datos como entrada del run
-    (pestaña *Datasets*) con la versión del descriptor como huella; ``datapackage.json`` como
-    artefacto; y una nota de una línea para la interfaz. Bajo ``mlflow run`` reanuda el run que
-    creó la línea de comandos (y le pone el nombre); si no, abre uno nuevo.
-    """
-    _resolve_experiment(question)
+    """Abre el run del modelo con los parámetros comunes, el conjunto de datos y el descriptor."""
     stage = BASELINE if name == BASELINE else "candidato"
-    tags = standard_tags(question, estimator=name, stage=stage)
-    if tags["git_cambios_sin_commit"] == "True":
-        logger.warning("Hay cambios sin commit: haz commit antes del run definitivo")
     data_version = get_data_version()
-    label = run_name(question, stage, estimator.label)
-    with mlflow.start_run(run_name=label) as run:
-        if run.info.run_name != label:  # run reanudado cuyo nombre no se actualizó
-            mlflow.set_tag("mlflow.runName", label)
-        mlflow.set_tags(
-            tags | {NOTE_TAG: run_note(question, data_version, name, **hyperparameters)}
-        )
+    with ExitStack() as stack:
+        try:
+            run = stack.enter_context(
+                open_run(
+                    question,
+                    run_name(question, stage, estimator.label),
+                    standard_tags(question, estimator=name, stage=stage),
+                    run_note(question, data_version, name, **hyperparameters),
+                )
+            )
+        except ExperimentMismatchError as error:
+            logger.error(str(error))
+            raise typer.Exit(code=1) from error
         mlflow.log_params(
             {
                 "inicio_entrenamiento": TRAIN_START,
@@ -312,16 +251,10 @@ def _start_run(question: str, name: str, estimator: Estimator, hyperparameters: 
         )
         mlflow.log_artifact(str(DATAPACKAGE_PATH), artifact_path="datos")
         yield run
-        logger.success(f"Run '{label}' registrado en '{EXPERIMENTS[question]}'")
 
 
 def _model_params(model) -> dict[str, str]:
-    """Hiperparámetros efectivos del modelo, con el prefijo ``modelo_``.
-
-    El prefijo evita chocar con los parámetros que ``mlflow run`` registra tal como se
-    pidieron (``n_estimators`` o la cadena vacía si no se pasó): MLflow no permite cambiar el
-    valor de un parámetro dentro del run. Así la interfaz muestra lo pedido y lo usado.
-    """
+    """Hiperparámetros efectivos con prefijo ``modelo_`` (los pedidos ya los registra ``mlflow run``)."""
     params = {"modelo": type(model).__name__}
     for name, value in model.get_params(deep=True).items():
         if isinstance(value, (str, int, float, bool, type(None), tuple, list)):
@@ -332,12 +265,7 @@ def _model_params(model) -> dict[str, str]:
 
 
 def _log_model(model, question: str, name: str, input_example: pd.DataFrame) -> None:
-    """Guarda el modelo en ``models/`` para ``predict.py`` y lo registra como modelo de MLflow.
-
-    El modelo registrado lleva la *flavor* de scikit-learn (firma y ejemplo de entrada), que
-    es lo que el Model Registry puede versionar; se serializa con cloudpickle para que
-    ``GroupedDummy`` viaje con su clase.
-    """
+    """Guarda el modelo en ``models/`` para ``predict.py`` y lo registra con la *flavor* de scikit-learn."""
     path = MODELS_DIR / f"{question}_{name}.joblib"
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, path)
@@ -506,8 +434,14 @@ def _train_p3(name: str, hyperparameters: dict[str, Any]) -> None:
 
 
 # -----------------------------------------------------------------------------
-# Comandos: la misma interfaz para las tres preguntas
+# Comandos p1, p2 y p3: la misma interfaz, definida una sola vez
 # -----------------------------------------------------------------------------
+TRAINERS = {"p1": _train_p1, "p2": _train_p2, "p3": _train_p3}
+HELP = {
+    "p1": "P1 · Regresión: viajes iniciados por estación y hora. Estimadores: baseline, rf, hgb.",
+    "p2": "P2 · Clasificación: riesgo de vaciarse o llenarse. Estimadores: baseline, rf, hgb.",
+    "p3": "P3 · Clustering: perfiles de uso de las estaciones. Estimadores: baseline, kmeans.",
+}
 ModelOption = Annotated[
     str,
     typer.Option(
@@ -521,70 +455,32 @@ HyperOption = Annotated[
 ]
 
 
-@app.command()
-def p1(
-    model: ModelOption = BASELINE,
-    n_estimators: HyperOption = "",
-    max_iter: HyperOption = "",
-    max_depth: HyperOption = "",
-    learning_rate: HyperOption = "",
-    n_clusters: HyperOption = "",
-) -> None:
-    """P1 · Regresión: viajes iniciados por estación y hora. Estimadores: baseline, rf, hgb."""
-    _train_p1(
-        model,
-        parse_hyperparameters(
-            n_estimators=n_estimators,
-            max_iter=max_iter,
-            max_depth=max_depth,
-            learning_rate=learning_rate,
-            n_clusters=n_clusters,
-        ),
-    )
+def _make_command(question: str) -> Callable[..., None]:
+    def command(
+        model: ModelOption = BASELINE,
+        n_estimators: HyperOption = "",
+        max_iter: HyperOption = "",
+        max_depth: HyperOption = "",
+        learning_rate: HyperOption = "",
+        n_clusters: HyperOption = "",
+    ) -> None:
+        TRAINERS[question](
+            model,
+            parse_hyperparameters(
+                n_estimators=n_estimators,
+                max_iter=max_iter,
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                n_clusters=n_clusters,
+            ),
+        )
+
+    command.__doc__ = HELP[question]
+    return command
 
 
-@app.command()
-def p2(
-    model: ModelOption = BASELINE,
-    n_estimators: HyperOption = "",
-    max_iter: HyperOption = "",
-    max_depth: HyperOption = "",
-    learning_rate: HyperOption = "",
-    n_clusters: HyperOption = "",
-) -> None:
-    """P2 · Clasificación: riesgo de vaciarse o llenarse. Estimadores: baseline, rf, hgb."""
-    _train_p2(
-        model,
-        parse_hyperparameters(
-            n_estimators=n_estimators,
-            max_iter=max_iter,
-            max_depth=max_depth,
-            learning_rate=learning_rate,
-            n_clusters=n_clusters,
-        ),
-    )
-
-
-@app.command()
-def p3(
-    model: ModelOption = BASELINE,
-    n_estimators: HyperOption = "",
-    max_iter: HyperOption = "",
-    max_depth: HyperOption = "",
-    learning_rate: HyperOption = "",
-    n_clusters: HyperOption = "",
-) -> None:
-    """P3 · Clustering: perfiles de uso de las estaciones. Estimadores: baseline, kmeans."""
-    _train_p3(
-        model,
-        parse_hyperparameters(
-            n_estimators=n_estimators,
-            max_iter=max_iter,
-            max_depth=max_depth,
-            learning_rate=learning_rate,
-            n_clusters=n_clusters,
-        ),
-    )
+for _question in TRAINERS:
+    app.command(_question)(_make_command(_question))
 
 
 if __name__ == "__main__":

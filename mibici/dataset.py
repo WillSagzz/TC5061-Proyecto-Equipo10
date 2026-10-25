@@ -17,7 +17,7 @@ coinciden con los que describe el descriptor. Rutas, fechas y reglas de limpieza
 ``config.py``.
 """
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import hashlib
 import os
 from pathlib import Path
@@ -597,27 +597,37 @@ def verify_processed(package: Package) -> None:
 # MARK: MLflow
 @contextmanager
 def _ingest_run(version: str, datapackage_path: Path):
-    """Registra la ingesta como run de MLflow solo cuando corre bajo ``mlflow run``.
+    """Registra la ingesta como run de MLflow solo bajo ``mlflow run`` (``MLFLOW_RUN_ID``).
 
-    ``mlflow run`` crea el run antes de lanzar este código y deja su id en ``MLFLOW_RUN_ID``;
-    aquí se reanuda para ponerle nombre, etiquetas, la versión de datos como parámetro y el
-    descriptor como artefacto (convención de ``experiments.py``). Sin ``MLFLOW_RUN_ID`` no
-    se toca MLflow.
+    Reanuda el run que creó la línea de comandos con el nombre, las etiquetas y la nota de
+    ``experiments.py``, la versión de datos como parámetro y el descriptor como artefacto.
     """
     if not os.getenv("MLFLOW_RUN_ID"):
         yield
         return
     import mlflow
 
-    from mibici.config import MLFLOW_TRACKING_URI
-    from mibici.experiments import NOTE_TAG, run_name, run_note, standard_tags
+    from mibici.experiments import (
+        ExperimentMismatchError,
+        open_run,
+        run_name,
+        run_note,
+        standard_tags,
+    )
 
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    label = run_name("ingesta", label=version)
-    with mlflow.start_run(run_name=label) as run:
-        if run.info.run_name != label:
-            mlflow.set_tag("mlflow.runName", label)
-        mlflow.set_tags(standard_tags("ingesta") | {NOTE_TAG: run_note("ingesta", version)})
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(
+                open_run(
+                    "ingesta",
+                    run_name("ingesta", label=version),
+                    standard_tags("ingesta"),
+                    run_note("ingesta", version),
+                )
+            )
+        except ExperimentMismatchError as error:
+            logger.error(str(error))
+            raise typer.Exit(code=1) from error
         mlflow.log_param("version_datos", version)
         mlflow.log_artifact(str(datapackage_path), artifact_path="datos")
         yield
