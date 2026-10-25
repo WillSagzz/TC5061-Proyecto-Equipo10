@@ -10,16 +10,25 @@ from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, precision_recall_curve
 
 INK = "#262624"
 INK_SECONDARY = "#5e5d59"
 GRID = "#e6e5e0"
 BACKGROUND = "#fcfcfb"
 BLUE = "#2a78d6"
+ORANGE = "#eb6834"
 CONTEXT_GRAY = "#d3d1c7"  # estaciones de referencia en los mapas
 # Escala secuencial de un solo tono (azul), de claro a oscuro
-BLUE_RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
+BLUE_RAMP = [
+    "#cde2fb",
+    "#9ec5f4",
+    "#6da7ec",
+    "#3987e5",
+    "#256abf",
+    "#184f95",
+    "#0d366b",
+]
 
 
 def _apply_style(ax) -> None:
@@ -65,7 +74,9 @@ def plot_p1_actual_vs_predicted(
     )
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(totals.index, totals["departures"], color=INK, linewidth=1.6, label="Real")
-    ax.plot(totals.index, totals["predicted"], color=BLUE, linewidth=2, label="Predicción")
+    ax.plot(
+        totals.index, totals["predicted"], color=BLUE, linewidth=2, label="Predicción"
+    )
     ax.set_title(
         f"P1 · Viajes por hora en el sistema, primeros {days} días",
         loc="left",
@@ -118,7 +129,12 @@ def plot_p2_confusion_matrix(
     ax.set_yticks(range(len(labels)), labels)
     ax.set_xlabel("Clase predicha", color=INK_SECONDARY, fontsize=9)
     ax.set_ylabel("Clase real", color=INK_SECONDARY, fontsize=9)
-    ax.set_title("P2 · Matriz de confusión (% por clase real)", loc="left", fontsize=11, color=INK)
+    ax.set_title(
+        "P2 · Matriz de confusión (% por clase real)",
+        loc="left",
+        fontsize=11,
+        color=INK,
+    )
     ax.tick_params(colors=INK_SECONDARY, labelsize=9, length=0)
     # Separación de 2 px entre celdas, del color del fondo
     ax.set_xticks(np.arange(len(labels) + 1) - 0.5, minor=True)
@@ -158,7 +174,9 @@ def plot_p3_cluster_map(table: pd.DataFrame, labels: np.ndarray, path: Path) -> 
     )
     for ax, group in zip(axes.flat, groups):
         in_group = labels == group
-        ax.scatter(table["longitude"], table["latitude"], s=8, color=CONTEXT_GRAY, linewidths=0)
+        ax.scatter(
+            table["longitude"], table["latitude"], s=8, color=CONTEXT_GRAY, linewidths=0
+        )
         ax.scatter(
             table.loc[in_group, "longitude"],
             table.loc[in_group, "latitude"],
@@ -168,7 +186,10 @@ def plot_p3_cluster_map(table: pd.DataFrame, labels: np.ndarray, path: Path) -> 
             linewidths=0.8,
         )
         ax.set_title(
-            f"Grupo {group} · {in_group.sum()} estaciones", loc="left", fontsize=10, color=INK
+            f"Grupo {group} · {in_group.sum()} estaciones",
+            loc="left",
+            fontsize=10,
+            color=INK,
         )
         ax.set_aspect("equal")
         _apply_style(ax)
@@ -178,6 +199,62 @@ def plot_p3_cluster_map(table: pd.DataFrame, labels: np.ndarray, path: Path) -> 
     for ax in list(axes.flat)[len(groups) :]:
         ax.set_visible(False)
     fig.suptitle(
-        "P3 · Ubicación de las estaciones de cada grupo", x=0.01, ha="left", fontsize=11, color=INK
+        "P3 · Ubicación de las estaciones de cada grupo",
+        x=0.01,
+        ha="left",
+        fontsize=11,
+        color=INK,
     )
+    return _save(fig, path)
+
+
+def plot_p2_precision_recall(
+    y_true: pd.Series,
+    probabilities: np.ndarray,
+    classes: list[str],
+    risk_classes: list[str],
+    path: Path,
+) -> Path:
+    """Grafica la curva precisión-recall de cada clase de riesgo de P2.
+
+    Muestra, para cada umbral de probabilidad, qué parte de los intervalos en riesgo detecta
+    el modelo (recall) y qué parte de sus alertas son correctas (precisión). La línea
+    punteada de cada color es la proporción de esa clase: un modelo sin información queda
+    a esa altura.
+
+    Args:
+        y_true: Clases reales.
+        probabilities: Probabilidad de cada clase, en el orden de ``classes``.
+        classes: Orden de las columnas de ``probabilities``.
+        risk_classes: Clases de riesgo que se grafican.
+        path: Ruta del PNG.
+
+    Returns:
+        La ruta del PNG guardado.
+    """
+    fig, ax = plt.subplots(figsize=(6, 5))
+    for risk_class, color in zip(risk_classes, [BLUE, ORANGE]):
+        is_class = np.asarray(y_true) == risk_class
+        position = list(classes).index(risk_class)
+        precision, recall, _ = precision_recall_curve(
+            is_class, probabilities[:, position]
+        )
+        # El último punto (recall 0, precisión 1) lo agrega scikit-learn por convención y no
+        # corresponde a ningún umbral: se omite para no dibujar una raya vertical en el eje
+        ax.plot(recall[:-1], precision[:-1], color=color, linewidth=2, label=risk_class)
+        ax.axhline(is_class.mean(), color=color, linewidth=1, linestyle=":")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel(
+        "Recall (intervalos en riesgo detectados)", color=INK_SECONDARY, fontsize=9
+    )
+    ax.set_ylabel("Precisión (alertas correctas)", color=INK_SECONDARY, fontsize=9)
+    ax.set_title(
+        "P2 · Curva precisión-recall por clase de riesgo",
+        loc="left",
+        fontsize=11,
+        color=INK,
+    )
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK)
+    _apply_style(ax)
     return _save(fig, path)
