@@ -302,7 +302,11 @@ python -m pip install -e .
 
 `pip install -e .` registra el paquete `mibici` en el entorno, de modo que `python -m
 mibici.dataset` y los imports `from mibici.config import ...` funcionan desde cualquier
-carpeta. No se instala nada fuera de [`requirements.txt`](requirements.txt).
+carpeta, y registra además el *plugin* de MLflow que elige el experimento de cada *run*
+(ver [Reproducir con el MLflow Project](#reproducir-con-el-mlflow-project)). No se instala
+nada fuera de [`requirements.txt`](requirements.txt). El MLflow Project declara el mismo
+entorno en [`python_env.yaml`](python_env.yaml), con Python 3.12 y `-r requirements.txt`,
+para que `mlflow run` pueda construirlo desde cero.
 
 MLflow lee `MLFLOW_TRACKING_URI` de un archivo `.env` opcional (con `python-dotenv`). Sin
 `.env`, escribe en la base local `mlflow.db` (SQLite) con los artefactos en `mlartifacts/`, y no
@@ -318,50 +322,160 @@ Las rutas, fechas y semillas salen de `config.py`.
 
 | Comando | Equivalente en Python | Qué hace |
 |---|---|---|
-| `make data` | `python -m mibici.dataset` | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. |
+| `make data` | `mlflow run . -e ingest --env-manager local` (ejecuta `python -m mibici.dataset`) | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. Queda registrada como *run* del experimento `mibici-ingesta`. |
 | `make snapshot VERSION=2026-10` | `python -m mibici.datapackage snapshot --version 2026-10` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
-| `make train` | `python -m mibici.modeling.train all` (o `p1`, `p2`, `p3` para una sola pregunta) | **Experimento base.** Construye en memoria las tablas de P1, P2 y P3, entrena el *baseline* de cada pregunta con partición cronológica, lo evalúa, guarda el modelo en `models/` y registra el *run* en MLflow. |
-| `python -m mibici.modeling.predict p1` (o `p2`, `p3`) | — | **Inferencia.** Carga el modelo de `models/`, reconstruye la tabla de la pregunta y escribe las predicciones del conjunto de prueba (P1 y P2) o el grupo de cada estación (P3) en `data/processed/`. |
-| `mlflow ui --backend-store-uri sqlite:///mlflow.db` | — | Abre la interfaz de MLflow en <http://127.0.0.1:5000> sobre la base local. |
+| `make train` | `mlflow run . -e train -P question=p1` (y `p2`, `p3`) | **Modelo elegido de cada pregunta.** Hoy son los *baselines* (ver [Reproducir con el MLflow Project](#reproducir-con-el-mlflow-project)): construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
+| `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
+| `make run Q=p1 M=rf P="n_estimators=300"` | `mlflow run . -e train -P question=p1 -P model=rf -P n_estimators=300` | **Un modelo candidato.** `M` es el estimador del catálogo y `P` sus hiperparámetros; sin `M` entrena el *baseline*. |
+| `python -m mibici.modeling.predict p1 --model-name p1_rf` (o `p2`, `p3`) | — | **Inferencia.** Carga el modelo de `models/` (`p{n}_{estimador}.joblib`), reconstruye la tabla de la pregunta y escribe las predicciones del conjunto de prueba (P1 y P2) o el grupo de cada estación (P3) en `data/processed/`. |
+| `make mlflow-ui` | `mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000` | Levanta el servidor de *tracking* local con base de datos en <http://127.0.0.1:5000>. |
 | `make infra-check` | `python infra/scripts/check_server.py` | **Prueba de conexión** al servidor compartido con las credenciales del `.env`: crea un *run* de prueba con un artefacto y lo vuelve a leer. |
 | `make mlflow-password` | `python infra/scripts/change_password.py` | Cambia tu propia contraseña en el servidor compartido (sin Azure). |
 | `make infra-*` | `az ...` | Despliegue y mantenimiento del servidor en Azure; solo para quien administra la suscripción. Ver [`infra/README.md`](infra/README.md). |
 | `make lint` / `make format` | `ruff format --check && ruff check` / `ruff check --fix && ruff format` | Verifica o corrige el estilo del código. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 
-## Experimento base en MLflow
+## Reproducir con el MLflow Project
 
-El experimento se ejecuta desde el código del repositorio (`train.py`), nunca solo desde un
-*notebook*:
+Todas las corridas se lanzan desde el **MLflow Project** de la raíz
+([`MLproject`](MLproject)), nunca desde un *notebook*. `mlflow run` lee ese archivo, activa o
+construye el entorno declarado en [`python_env.yaml`](python_env.yaml) (Python 3.12 y las
+mismas versiones fijas de `requirements.txt`), sustituye los parámetros en el comando del
+punto de entrada y envuelve la ejecución en un *run* que registra por sí solo el commit de
+Git, el punto de entrada, el entorno y los parámetros. Con eso, cualquier *run* se reproduce
+desde un clon limpio con el comando que lo creó. Las rutas, las fechas de la partición y la
+semilla no aparecen en el `MLproject`: salen de `config.py`.
 
-- **Un experimento por proyecto:** `mibici-equipo10` (`MLFLOW_EXPERIMENT_NAME` en `config.py`).
-- **Un *run* por pregunta con nombre descriptivo** `P{n}-{etapa}-{modelo}`:
-  `P1-baseline-dummy-estacion-hora`, `P2-baseline-dummy-estacion-intervalo-tipo-dia` y
-  `P3-baseline-kmeans-k4`.
-- **Parámetros para reproducir el *run*:** `version_datos`, `inicio_entrenamiento`,
-  `inicio_validacion`, `inicio_prueba`, `fin_datos`, `semilla`, modelo e hiperparámetros, número
-  de filas de cada conjunto y de grupos, y `variables` (las columnas de entrada del modelo).
+Dos puntos de entrada:
+
+| Punto de entrada | Ejecuta | Parámetros |
+|---|---|---|
+| `ingest` | `python -m mibici.dataset` | Ninguno: la versión de datos la fija `datapackage.json`. |
+| `train` | `python -m mibici.modeling.train {question} --model {model} ...` | `question` (`p1`, `p2` o `p3`, obligatorio), `model` (estimador del catálogo; por defecto `baseline`) y los hiperparámetros `n_estimators`, `max_iter`, `max_depth`, `learning_rate` y `n_clusters` (vacíos = valor por defecto del estimador o de `config.py`). |
+
+### Desde un clon limpio
+
+```bash
+git clone https://github.com/WillSagzz/TC5061-Proyecto-Equipo10.git && cd TC5061-Proyecto-Equipo10
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+python -m pip install -U pip && python -m pip install -r requirements.txt
+cp .env.example .env    # opcional: llena las variables para registrar en el servidor del equipo
+
+# Ingesta: reconstruye la versión de datos de datapackage.json (run en mibici-ingesta)
+mlflow run . -e ingest --env-manager local
+
+# Modelo elegido de cada pregunta (hoy, el baseline de la propuesta; un run por comando)
+mlflow run . -e train -P question=p1 --env-manager local
+mlflow run . -e train -P question=p2 --env-manager local
+mlflow run . -e train -P question=p3 --env-manager local
+```
+
+`make data` y `make train` ejecutan exactamente esos comandos. `--env-manager local` usa el
+entorno activado; sin esa opción `mlflow run` construye el entorno de `python_env.yaml` en un
+*virtualenv* propio, para lo que necesita `pyenv` (en Windows, `pyenv-win`) para instalar la
+versión de Python declarada. Cuando se comparen los candidatos y se elija un modelo por
+pregunta, las tres últimas líneas cambiarán por el comando del modelo elegido.
+
+Un candidato se entrena con el estimador y sus hiperparámetros como parámetros:
+
+```bash
+mlflow run . -e train -P question=p1 -P model=rf -P n_estimators=300 --env-manager local
+mlflow run . -e train -P question=p2 -P model=hgb -P learning_rate=0.05 -P max_iter=200 --env-manager local
+mlflow run . -e train -P question=p3 -P model=kmeans -P n_clusters=6 --env-manager local
+make run Q=p1 M=rf P="n_estimators=300 max_depth=8"   # el mismo comando, abreviado
+```
+
+| Pregunta | `model` | Hiperparámetros que acepta |
+|---|---|---|
+| P1 | `baseline` (`DummyRegressor` por estación y hora) | ninguno: es la configuración fija de la propuesta |
+| P1 | `rf` (`RandomForestRegressor`) | `n_estimators`, `max_depth` |
+| P1 | `hgb` (`HistGradientBoostingRegressor`) | `max_iter`, `max_depth`, `learning_rate` |
+| P2 | `baseline` (`DummyClassifier` por estación, intervalo y tipo de día) | ninguno |
+| P2 | `rf` (`RandomForestClassifier`) | `n_estimators`, `max_depth` |
+| P2 | `hgb` (`HistGradientBoostingClassifier`) | `max_iter`, `max_depth`, `learning_rate` |
+| P3 | `baseline` (`StandardScaler` + `KMeans`, `k` de `config.py`) | ninguno |
+| P3 | `kmeans` | `n_clusters` |
+
+Un hiperparámetro que no corresponde al estimador, o cualquiera con `baseline`, detiene el
+*run* con un mensaje; el catálogo vive en `train.py` (`CATALOGUE`) y agregar un estimador es
+una entrada más. La semilla (`RANDOM_SEED`) se aplica a todos. Para depurar, el mismo comando
+corre sin el proyecto: `python -m mibici.modeling.train p1 --model rf --n-estimators 300`.
+
+### Experimentos, *runs* y etiquetas
+
+Un **modelo** es un *run*: el estimador con sus hiperparámetros, las variables, la versión de los
+datos y el commit que lo entrenó. La convención está en [`experiments.py`](mibici/experiments.py)
+y la escriben igual `train.py` y `dataset.py`; nadie inventa llaves nuevas al vuelo.
+
+- **Un experimento por pregunta y uno para la ingesta.** MLflow recomienda agrupar en un
+  experimento solo *runs* con los mismos datos de entrada, para que compararlos tenga
+  sentido: P1, P2 y P3 usan tablas, objetivos y métricas distintos. Una versión nueva de los
+  datos **no** abre un experimento: el *run* registra `version_datos` y las fechas de la
+  partición; solo se comparan *runs* con la misma versión y las mismas fechas.
+
+  | Experimento | Contenido |
+  |---|---|
+  | `mibici-p1-demanda` | *runs* de regresión de P1 |
+  | `mibici-p2-riesgo` | *runs* de clasificación de P2 |
+  | `mibici-p3-perfiles` | *runs* de *clustering* de P3 |
+  | `mibici-ingesta` | un *run* por versión de datos reconstruida |
+
+  **El experimento lo elige el proyecto**, no quien ejecuta: `pip install -e .` registra un
+  *plugin* de MLflow (`mlflow.default_experiment_provider`, en `pyproject.toml`) que, al
+  correr `mlflow run` de este proyecto, lee la pregunta o el punto de entrada y devuelve el
+  experimento que corresponde, creándolo con su descripción y etiquetas si no existe. Si se
+  pasa `--experiment-name`, MLflow lo respeta y `train.py` se detiene cuando no coincide con
+  el de la pregunta. Fuera de `mlflow run` de este proyecto, el *plugin* no interviene.
+- **Nombre del *run*:** `P{n}-{etapa}-{estimador}` al entrenar
+  (`P1-baseline-dummy-estacion-hora`, `P2-candidato-hgb`, `P3-baseline-kmeans-k4`) e
+  `ingesta-{version}` al ingerir. El nombre es una etiqueta legible, no un identificador: dos
+  *runs* con el mismo nombre se distinguen por sus parámetros y por su id.
+- **Parámetros:** los que `mlflow run` registra tal como se pidieron (`question`, `model`,
+  `n_estimators`...; un hiperparámetro que no se pasó queda vacío, en Windows como `""`) y los
+  que escribe `train.py`: `modelo` y los hiperparámetros efectivos con el prefijo `modelo_`
+  (lo pedido frente a lo usado), `version_datos`,
+  `inicio_entrenamiento`, `inicio_validacion`, `inicio_prueba`, `fin_datos`, `semilla`, filas de
+  cada conjunto, grupos y `variables` (las columnas de entrada).
 - **Métricas con el conjunto como prefijo:** `train_`, `val_` y `test_` de `mae` y `rmse` (P1);
   `recall`, `precision` y `avg_precision` de las clases `vaciarse` y `llenarse` y `f1_macro`
   (P2); `train_silhouette` y `train_davies_bouldin`, más sus curvas por `k` (P3).
-- **Etiquetas:** `equipo=equipo10`, `usuario` (quién ejecutó el *run*: el usuario del servidor
-  compartido o, en modo local, el del sistema), `pregunta` (`P1`, `P2` o `P3`), `git_commit` con el SHA del
-  commit que lo ejecutó, `git_cambios_sin_commit` y `tipo_modelo` (`baseline` o `candidato`).
+- **Etiquetas**, solo lo que sirve para filtrar y MLflow no registra por su cuenta:
+
+  | Etiqueta | Valores |
+  |---|---|
+  | `equipo` | `equipo10` |
+  | `pregunta` | `P1`, `P2`, `P3`; `datos` en la ingesta |
+  | `estimador` | `baseline`, `rf`, `hgb`, `kmeans` |
+  | `tipo_modelo` | `baseline` (configuración fija de la propuesta) o `candidato` |
+  | `usuario` | quién lo ejecutó: el usuario del servidor compartido o, en local, el del sistema |
+  | `git_commit`, `git_cambios_sin_commit` | commit y si había cambios sin confirmar (un *run* así no es reproducible) |
+  | `mlflow.note.content` | una línea generada con pregunta, estimador, hiperparámetros y versión de datos; aparece como nota en la interfaz |
+
+  `mlflow run` añade las suyas: punto de entrada, tipo y nombre de la fuente, commit y
+  entorno. Los integrantes son una etiqueta (`usuario`), nunca un experimento.
 - **Conjunto de datos como entrada del *run*:** el *dataset* `datapackage`, con
   `version_datos` como huella, en la pestaña *Datasets* de la interfaz.
 - **Artefactos:** al menos una figura por pregunta (serie real contra predicha en P1, matriz de
-  confusión en P2, mapa de los grupos de estaciones en P3), el modelo serializado, el
-  descriptor `datapackage.json` y, en P3, las tablas de grupos.
+  confusión en P2, mapa de los grupos en P3), el modelo con la *flavor* de scikit-learn
+  (firma y ejemplo de entrada, listo para el Model Registry; en `models/` queda además el
+  `.joblib` que lee `predict.py`), el descriptor `datapackage.json` y, en P3, las tablas de grupos.
 - **Nunca** credenciales ni datos personales como parámetros, etiquetas o artefactos.
 
-Para reproducirlo desde un clon limpio:
+### Servidor de *tracking* con base de datos
+
+El Model Registry necesita un *backend* respaldado por base de datos. La entrega usa el
+[servidor compartido del equipo en Azure](#servidor-compartido-del-equipo-en-azure)
+(metadatos en PostgreSQL, artefactos en Blob Storage), al que apunta `MLFLOW_TRACKING_URI`
+en el `.env`. El equivalente local, para iterar sin red, es un servidor sobre SQLite:
 
 ```bash
-make data                                          # descarga, verifica contra datapackage.json, limpia y escribe Parquet
-make train                                         # construye las tablas y registra los tres baselines
-mlflow ui --backend-store-uri sqlite:///mlflow.db  # revisa los runs en http://127.0.0.1:5000
+make mlflow-ui    # mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000    # en .env o en la terminal
 ```
+
+Sin `.env` ni variable, el código escribe directo en `sqlite:///mlflow.db` con los artefactos en
+`mlartifacts/`. `mlflow.db`, `mlruns/` y `mlartifacts/` están en `.gitignore`.
 
 Las capturas de la interfaz (lista de *runs*, detalle de un *run*, artefacto y comparación)
 se guardan en `docs/entregas/entrega01/figuras/` para el PDF de la propuesta.
@@ -395,9 +509,11 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 (`ccds`, con `include_code_scaffold = Yes`).
 
 ```
-├── Makefile              <- Reglas: data, snapshot, validate, train, lint, format, entrega01, infra-*, mlflow-password
+├── Makefile              <- Reglas: data, train, baselines, run, mlflow-ui, snapshot, validate, lint, format, entrega01, infra-*, mlflow-password
+├── MLproject             <- MLflow Project: entorno (python_env.yaml) y puntos de entrada `ingest` y `train`
+├── python_env.yaml       <- Entorno del MLflow Project: Python 3.12 y `-r requirements.txt` (sin repetir versiones)
 ├── README.md             <- Este documento
-├── pyproject.toml        <- Metadatos del paquete `mibici` y configuración de Ruff
+├── pyproject.toml        <- Metadatos del paquete `mibici`, plugin de MLflow (experimento por pregunta) y configuración de Ruff
 ├── requirements.txt      <- Dependencias con versión fija para reproducir el entorno
 ├── .gitignore            <- Excluye data/, mlruns/, mlartifacts/, mlflow.db, .env, modelos serializados y secretos de infra/
 ├── .env.example          <- Variables de entorno para conectarse al servidor MLflow del equipo (sin credenciales)
@@ -434,12 +550,13 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
     ├── dataset.py        <- Ingesta reproducible: descarga y verifica contra el descriptor, normaliza, limpia y guarda en Parquet
     ├── datapackage.py    <- Versión de los datos: `snapshot` escribe datapackage.json y `validate` lo comprueba con frictionless
+    ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
     └── modeling
         ├── __init__.py
         ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
-        ├── train.py      <- Entrenamiento y registro de runs en MLflow
+        ├── train.py      <- Punto de entrada `train`: catálogo de estimadores, hiperparámetros y registro del run en MLflow
         └── predict.py    <- Inferencia con modelos entrenados
 ```
 
