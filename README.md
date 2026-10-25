@@ -477,6 +477,7 @@ make search Q=p1 M=hgb
 | P2 | `logreg` | Variables indicadoras + `LogisticRegression(class_weight="balanced")` | `c`, `max_iter` |
 | P2 | `hgb` | `HistGradientBoostingClassifier(class_weight="balanced")` | `learning_rate`, `max_iter`, `max_leaf_nodes` |
 | P2 | `hgb_unweighted` | El mismo, sin pesos por clase | `learning_rate`, `max_iter`, `max_leaf_nodes` |
+| P2 | `hgb_threshold` | El `hgb` con pesos por clase, que alerta solo si la probabilidad de `vaciarse` o `llenarse` supera un umbral elegido con validación (`P2_THRESHOLD_GRID`); los umbrales se registran como `umbral_vaciarse` y `umbral_llenarse` y viajan dentro del modelo | `learning_rate`, `max_iter`, `max_leaf_nodes` |
 | P3 | `baseline` / `kmeans` | `StandardScaler` + `KMeans` | `n_clusters` |
 | P3 | `agglomerative` | `StandardScaler` + `AgglomerativeClustering(ward)`; no tiene `predict`, así que se carga con `mlflow.sklearn.load_model` y no con `mlflow.pyfunc` | `n_clusters` |
 | P3 | `gmm` | `StandardScaler` + `GaussianMixture` | `n_clusters` |
@@ -510,6 +511,8 @@ sus artefactos y su modelo.
 
 **Selección del modelo final:** se comparan los candidatos con las métricas `val_`. Las
 métricas `test_` se registran en cada corrida, pero solo se leen del modelo ya elegido.
+En `hgb_threshold` las métricas `val_` son un poco optimistas, porque el umbral se eligió
+con ese mismo conjunto; su medida limpia es `test_`.
 
 ### Experimentos, *runs* y etiquetas
 
@@ -669,6 +672,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
         ├── __init__.py
         ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
         ├── candidates.py <- Catálogo de modelos de cada pregunta (baseline y candidatos)
+        ├── thresholds.py <- Umbral de alerta de P2, elegido con validación
         ├── train.py      <- Puntos de entrada `train` y `search`: entrenamiento, búsqueda y registro del run en MLflow
         └── predict.py    <- Inferencia con modelos entrenados
 ```

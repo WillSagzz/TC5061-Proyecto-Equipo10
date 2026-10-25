@@ -82,6 +82,7 @@ from mibici.features import (
 )
 from mibici.modeling.baselines import build_p3_baseline
 from mibici.modeling.candidates import get_spec, resolve_hyperparams
+from mibici.modeling.thresholds import ThresholdClassifier
 from mibici.plots import (
     plot_p1_actual_vs_predicted,
     plot_p2_confusion_matrix,
@@ -333,8 +334,11 @@ def _fit_and_log(data: QuestionData, model_name: str, hyperparams: dict, full: b
     question = data.question
     model = get_spec(question, model_name).build(hyperparams)
     estimator = model.steps[-1][1] if hasattr(model, "steps") else model
+    estimator_name = type(estimator).__name__
+    if isinstance(estimator, ThresholdClassifier):
+        estimator_name += f"({type(estimator.estimator).__name__})"
     mlflow.log_params(
-        {"estimador": type(estimator).__name__, "variables": ", ".join(data.features)}
+        {"estimador": estimator_name, "variables": ", ".join(data.features)}
         | {f"hp_{name}": value for name, value in hyperparams.items()}
     )
 
@@ -360,6 +364,11 @@ def _fit_and_log(data: QuestionData, model_name: str, hyperparams: dict, full: b
     X_train, y_train = splits["train"][data.features], splits["train"][data.target]
     model.fit(X_train, y_train)
     mlflow.log_params({f"filas_{name}": len(split) for name, split in splits.items()})
+    if isinstance(model, ThresholdClassifier):
+        # Los umbrales de alerta se eligen con validación, después de entrenar
+        validation = splits["val"]
+        model.tune_thresholds(validation[data.features], validation[data.target])
+        mlflow.log_params({f"umbral_{name}": value for name, value in model.thresholds_.items()})
 
     metrics = {}
     for name, split in splits.items():
@@ -535,7 +544,7 @@ def run_command(
     ),
     alpha: Annotated[str, typer.Option(help="ridge (P1)")] = "",
     c: Annotated[str, typer.Option(help="logreg (P2)")] = "",
-    learning_rate: Annotated[str, typer.Option(help="hgb, hgb_poisson, hgb_unweighted")] = "",
+    learning_rate: Annotated[str, typer.Option(help="Los hgb")] = "",
     max_iter: Annotated[str, typer.Option(help="logreg y los hgb")] = "",
     max_leaf_nodes: Annotated[str, typer.Option(help="Los hgb")] = "",
     n_clusters: Annotated[str, typer.Option(help="kmeans, agglomerative, gmm (P3)")] = "",
