@@ -177,7 +177,7 @@ no coincide, se detiene. Solo `make snapshot` cambia `datapackage.json`, y el ca
 `main` por *Pull Request*.
 
 Todos los comandos se corren desde la raíz del repositorio con el entorno virtual activado
-(ver [Instalación](#instalación)).
+(ver la [Guía rápida](#guía-rápida-probar-el-proyecto-desde-un-clon-limpio)).
 
 #### Qué hacer en cada situación
 
@@ -278,42 +278,108 @@ El *pipeline* por pregunta y la justificación de cada herramienta con las lectu
 están en las secciones [5](docs/entregas/entrega01/secciones/05-pipeline.md) y
 [7](docs/entregas/entrega01/secciones/07-arquitectura.md) de la propuesta.
 
-## Instalación
+## Guía rápida: probar el proyecto desde un clon limpio
 
-Requisitos: **Python 3.10 o superior**, Git y `make` (en Windows viene con Git Bash o se
-instala con `winget install GnuWin32.Make`; sin `make`, cada regla del `Makefile` se puede
-ejecutar con el comando de Python que indica).
+Seis pasos; unos diez minutos sin contar la descarga de datos de la primera vez. Todos los
+comandos se ejecutan desde la raíz del repositorio con el entorno activado.
+
+**Requisitos:** Python 3.12 (el MLflow Project lo declara; 3.10 o superior también corre),
+Git y, opcionalmente, `make` (en Windows viene con Git Bash o se instala con
+`winget install GnuWin32.Make`). Sin `make`, usa el comando `mlflow run` equivalente que
+aparece junto a cada regla.
+
+### Paso 1. Clonar e instalar
 
 ```bash
-# 1. Clonar el repositorio
 git clone https://github.com/WillSagzz/TC5061-Proyecto-Equipo10.git
 cd TC5061-Proyecto-Equipo10
-
-# 2. Crear y activar un entorno virtual
 python -m venv .venv
-source .venv/bin/activate          # macOS / Linux
-# .venv\Scripts\activate           # Windows
-
-# 3. Instalar las dependencias con versión fija y el paquete `mibici` en modo editable
+source .venv/bin/activate            # macOS / Linux
+# .venv\Scripts\activate             # Windows (PowerShell o cmd)
 python -m pip install -U pip
 python -m pip install -r requirements.txt
-python -m pip install -e .
 ```
 
-`pip install -e .` registra el paquete `mibici` en el entorno, de modo que `python -m
-mibici.dataset` y los imports `from mibici.config import ...` funcionan desde cualquier
-carpeta, y registra además el *plugin* de MLflow que elige el experimento de cada *run*
-(ver [Reproducir con el MLflow Project](#reproducir-con-el-mlflow-project)). No se instala
-nada fuera de [`requirements.txt`](requirements.txt). El MLflow Project declara el mismo
-entorno en [`python_env.yaml`](python_env.yaml), con Python 3.12 y `-r requirements.txt`,
-para que `mlflow run` pueda construirlo desde cero.
+`requirements.txt` instala las dependencias con versión fija **y** el paquete `mibici` en modo
+editable (`-e .`). Ese paso registra también el *plugin* de MLflow que elige el experimento
+de cada *run*, así que no lo omitas. Comprobación:
 
-MLflow lee `MLFLOW_TRACKING_URI` de un archivo `.env` opcional (con `python-dotenv`). Sin
-`.env`, escribe en la base local `mlflow.db` (SQLite) con los artefactos en `mlartifacts/`, y no
-se necesita ninguna credencial. Con `.env`, registra en el
-[servidor compartido del equipo](#servidor-compartido-del-equipo-en-azure) con el usuario y la
-contraseña de cada integrante. `.env` está excluido de Git; en el repositorio solo entra un
-[`.env.example`](.env.example) con los nombres de las variables.
+```bash
+python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok 3.4.0
+```
+
+### Paso 2. Elegir dónde se registran los *runs*
+
+El código es el mismo en los dos casos; solo cambia a dónde apunta MLflow.
+
+| Opción | Qué hacer | Dónde ver los *runs* |
+|---|---|---|
+| **A. Local, sin credenciales** (la de la rúbrica) | Nada. Sin `.env`, los *runs* van a la base SQLite `mlflow.db` de la raíz y los artefactos a `mlartifacts/`. Para usar un servidor local con base de datos, en una terminal `make mlflow-ui` y en la otra `export MLFLOW_TRACKING_URI=http://127.0.0.1:5000` (PowerShell: `$env:MLFLOW_TRACKING_URI="http://127.0.0.1:5000"`). | `make mlflow-ui` y abrir <http://127.0.0.1:5000> |
+| **B. Servidor compartido del equipo** (Azure) | `cp .env.example .env` y llenar `MLFLOW_TRACKING_URI`, `MLFLOW_TRACKING_USERNAME` y `MLFLOW_TRACKING_PASSWORD` con lo que te da quien administra el servidor. `make infra-check` confirma la conexión. | La misma URL del `.env`, con tu usuario y contraseña |
+
+`.env` está excluido de Git; en el repositorio solo entra [`.env.example`](.env.example) con
+los nombres de las variables. Detalles del servidor en
+[Servidor compartido del equipo en Azure](#servidor-compartido-del-equipo-en-azure).
+
+### Paso 3. Ingesta
+
+```bash
+mlflow run . -e ingest --env-manager local        # o: make data
+```
+
+La primera vez descarga del portal de MiBici los 25 CSV de la versión de datos
+(`datapackage.json`, unos 720 MB) y verifica el tamaño y el hash de cada uno; después tarda
+unos dos minutos. Deja `data/processed/meses.parquet` y `nomenclatura.parquet` y registra el
+*run* `ingesta-2026-10` en el experimento `mibici-ingesta`.
+
+### Paso 4. Entrenar
+
+```bash
+mlflow run . -e train -P question=p1 --env-manager local     # baseline de P1 (~30 s)
+mlflow run . -e train -P question=p2 --env-manager local     # baseline de P2 (~1 min)
+mlflow run . -e train -P question=p3 --env-manager local     # baseline de P3 (~30 s)
+# los tres a la vez: make baselines
+
+# un candidato: el estimador y sus hiperparámetros como parámetros
+mlflow run . -e train -P question=p1 -P model=rf -P n_estimators=300 --env-manager local
+make run Q=p2 M=hgb P="learning_rate=0.05 max_iter=200"       # lo mismo, abreviado
+```
+
+Un *run* por comando. El experimento, el nombre del *run* y las etiquetas los pone el proyecto;
+no hay que indicarlos. `--env-manager local` ejecuta en el entorno que ya activaste; sin esa
+opción `mlflow run` construye el entorno de `python_env.yaml` en un *virtualenv* propio y para
+eso necesita `pyenv` (ver [Reproducir con el MLflow Project](#reproducir-con-el-mlflow-project)).
+
+### Paso 5. Qué deberías ver
+
+- **En la terminal**, al final de cada comando: `Run 'P1-baseline-dummy-estacion-hora' registrado
+  en 'mibici-p1-demanda'` y `=== Run (ID '...') succeeded ===`.
+- **En la interfaz de MLflow:** cuatro experimentos creados solos, `mibici-p1-demanda`,
+  `mibici-p2-riesgo`, `mibici-p3-perfiles` y `mibici-ingesta`, cada uno con su descripción.
+  Dentro, *runs* con nombre `P{n}-baseline-...` o `P{n}-candidato-{estimador}`, tu usuario en
+  la columna *User*, los parámetros (`version_datos`, fechas de la partición, `modelo_*`), las
+  métricas `test_*` y los artefactos: una gráfica, el modelo y `datapackage.json`.
+- **En disco:** `models/p1_baseline.joblib` (o `p1_rf.joblib`) y la gráfica en
+  `reports/figures/`; nada de esto entra a Git.
+
+### Paso 6 (opcional). Inferencia con un modelo entrenado
+
+```bash
+python -m mibici.modeling.predict p1 --model-name p1_rf     # escribe data/processed/p1_rf_predicciones.csv
+```
+
+### Si algo falla
+
+| Mensaje o síntoma | Causa | Solución |
+|---|---|---|
+| `Could not find the pyenv binary` | Falta `--env-manager local` y MLflow intenta construir el entorno | Agrega `--env-manager local` (los objetivos de `make` ya lo llevan) |
+| `ModuleNotFoundError: No module named 'mibici'` o los *runs* caen en el experimento `Default` | El paquete no está instalado en el entorno activo | `python -m pip install -r requirements.txt` (o `pip install -e .`) |
+| `El conjunto 'train' (...) quedó vacío` o `No existe data/processed/...` | Falta la ingesta | Paso 3 |
+| `--model 'x' no existe para p1` / `--model rf no acepta n_clusters` | Estimador o hiperparámetro fuera del catálogo | Tabla del catálogo en [Reproducir con el MLflow Project](#reproducir-con-el-mlflow-project) |
+| `El run de mlflow run está en el experimento 'Default' y p1 pertenece a ...` | Se pasó `--experiment-name` | Quítalo: el proyecto elige el experimento |
+| `UnicodeEncodeError` en Windows | La consola abre en cp1252 y MLflow imprime acentos y emojis | `set PYTHONIOENCODING=utf-8` (cmd) o `$env:PYTHONIOENCODING="utf-8"` (PowerShell) |
+| `401`, `403` o `Permission denied` con el servidor | `.env` incompleto, contraseña vieja o usuario de solo lectura | Revisa el `.env` y corre `make infra-check` |
+| El *run* lleva `git_cambios_sin_commit=True` | Había cambios locales sin confirmar | Haz *commit* antes del *run* definitivo; el aviso no detiene nada |
 
 ## Comandos
 
@@ -354,28 +420,29 @@ Dos puntos de entrada:
 | `ingest` | `python -m mibici.dataset` | Ninguno: la versión de datos la fija `datapackage.json`. |
 | `train` | `python -m mibici.modeling.train {question} --model {model} ...` | `question` (`p1`, `p2` o `p3`, obligatorio), `model` (estimador del catálogo; por defecto `baseline`) y los hiperparámetros `n_estimators`, `max_iter`, `max_depth`, `learning_rate` y `n_clusters` (vacíos = valor por defecto del estimador o de `config.py`). |
 
-### Desde un clon limpio
+### Comandos de la entrega
+
+La instalación paso a paso está en la [Guía rápida](#guía-rápida-probar-el-proyecto-desde-un-clon-limpio).
+Desde un clon limpio, con el entorno instalado, la ingesta y el modelo elegido de cada
+pregunta se reproducen con:
 
 ```bash
-git clone https://github.com/WillSagzz/TC5061-Proyecto-Equipo10.git && cd TC5061-Proyecto-Equipo10
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-python -m pip install -U pip && python -m pip install -r requirements.txt
-cp .env.example .env    # opcional: llena las variables para registrar en el servidor del equipo
-
-# Ingesta: reconstruye la versión de datos de datapackage.json (run en mibici-ingesta)
-mlflow run . -e ingest --env-manager local
-
-# Modelo elegido de cada pregunta (hoy, el baseline de la propuesta; un run por comando)
-mlflow run . -e train -P question=p1 --env-manager local
-mlflow run . -e train -P question=p2 --env-manager local
-mlflow run . -e train -P question=p3 --env-manager local
+mlflow run . -e ingest --env-manager local                    # ingesta (run en mibici-ingesta)
+mlflow run . -e train -P question=p1 --env-manager local      # modelo elegido de P1
+mlflow run . -e train -P question=p2 --env-manager local      # modelo elegido de P2
+mlflow run . -e train -P question=p3 --env-manager local      # modelo elegido de P3
 ```
 
-`make data` y `make train` ejecutan exactamente esos comandos. `--env-manager local` usa el
-entorno activado; sin esa opción `mlflow run` construye el entorno de `python_env.yaml` en un
-*virtualenv* propio, para lo que necesita `pyenv` (en Windows, `pyenv-win`) para instalar la
-versión de Python declarada. Cuando se comparen los candidatos y se elija un modelo por
-pregunta, las tres últimas líneas cambiarán por el comando del modelo elegido.
+`make data` y `make train` ejecutan exactamente esos comandos. Hoy el modelo elegido de cada
+pregunta es el *baseline* de la propuesta; cuando se comparen los candidatos, las tres últimas
+líneas cambiarán por el comando del modelo elegido.
+
+Sobre `--env-manager local`: ejecuta el punto de entrada en el entorno que ya activaste, que se
+instaló con el mismo `requirements.txt`. Sin esa opción, `mlflow run` toma `python_env.yaml`,
+pide a `pyenv` (en Windows, `pyenv-win`) la versión de Python declarada, crea un *virtualenv*
+propio e instala ahí las dependencias; es la forma de reconstruir el entorno desde cero en una
+máquina con `pyenv`, o con `--env-manager uv` si `uv` está instalado, que descarga Python por su
+cuenta. El resultado del *run* es el mismo.
 
 Un candidato se entrena con el estimador y sus hiperparámetros como parámetros:
 
