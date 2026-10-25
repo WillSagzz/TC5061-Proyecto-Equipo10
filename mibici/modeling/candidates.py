@@ -45,9 +45,7 @@ class ModelSpec:
     defaults: dict = field(default_factory=dict)
 
 
-def _linear_preprocessor(
-    features: list[str], categorical: list[str]
-) -> ColumnTransformer:
+def _linear_preprocessor(features: list[str], categorical: list[str]) -> ColumnTransformer:
     """Prepara los datos para los modelos lineales (Ridge y LogisticRegression).
 
     Estos modelos multiplican cada columna por un número y suman, así que necesitan tres
@@ -70,9 +68,7 @@ def _linear_preprocessor(
     Returns:
         El preprocesamiento, todavía sin ajustar.
     """
-    numeric = [
-        column for column in features if column not in categorical + ["station_id"]
-    ]
+    numeric = [column for column in features if column not in categorical + ["station_id"]]
     return ColumnTransformer(
         [
             ("categoricas", OneHotEncoder(handle_unknown="ignore"), categorical),
@@ -90,9 +86,7 @@ def _linear_preprocessor(
 # -----------------------------------------------------------------------------
 def _p1_ridge(hp: dict) -> Pipeline:
     preprocessor = _linear_preprocessor(P1_FEATURES, ["hour_of_day", "day_of_week"])
-    return Pipeline(
-        [("preprocesamiento", preprocessor), ("estimador", Ridge(alpha=hp["alpha"]))]
-    )
+    return Pipeline([("preprocesamiento", preprocessor), ("estimador", Ridge(alpha=hp["alpha"]))])
 
 
 def _p1_hgb(hp: dict, loss: str = "squared_error") -> HistGradientBoostingRegressor:
@@ -119,9 +113,7 @@ def _p2_logreg(hp: dict) -> Pipeline:
     return Pipeline([("preprocesamiento", preprocessor), ("estimador", estimator)])
 
 
-def _p2_hgb(
-    hp: dict, class_weight: str | None = "balanced"
-) -> HistGradientBoostingClassifier:
+def _p2_hgb(hp: dict, class_weight: str | None = "balanced") -> HistGradientBoostingClassifier:
     return HistGradientBoostingClassifier(
         learning_rate=hp["learning_rate"],
         max_iter=hp["max_iter"],
@@ -199,9 +191,7 @@ def get_spec(question: str, model: str) -> ModelSpec:
         ValueError: Si la pregunta o el modelo no existen, con la lista de opciones válidas.
     """
     if question not in CATALOG:
-        raise ValueError(
-            f"Pregunta '{question}' desconocida. Opciones: {list(CATALOG)}"
-        )
+        raise ValueError(f"Pregunta '{question}' desconocida. Opciones: {list(CATALOG)}")
     if model not in CATALOG[question]:
         raise ValueError(
             f"Modelo '{model}' desconocido para {question}. Opciones: {list(CATALOG[question])}"

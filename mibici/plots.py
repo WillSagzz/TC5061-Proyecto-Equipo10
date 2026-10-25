@@ -74,9 +74,7 @@ def plot_p1_actual_vs_predicted(
     )
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(totals.index, totals["departures"], color=INK, linewidth=1.6, label="Real")
-    ax.plot(
-        totals.index, totals["predicted"], color=BLUE, linewidth=2, label="Predicción"
-    )
+    ax.plot(totals.index, totals["predicted"], color=BLUE, linewidth=2, label="Predicción")
     ax.set_title(
         f"P1 · Viajes por hora en el sistema, primeros {days} días",
         loc="left",
@@ -174,9 +172,7 @@ def plot_p3_cluster_map(table: pd.DataFrame, labels: np.ndarray, path: Path) -> 
     )
     for ax, group in zip(axes.flat, groups):
         in_group = labels == group
-        ax.scatter(
-            table["longitude"], table["latitude"], s=8, color=CONTEXT_GRAY, linewidths=0
-        )
+        ax.scatter(table["longitude"], table["latitude"], s=8, color=CONTEXT_GRAY, linewidths=0)
         ax.scatter(
             table.loc[in_group, "longitude"],
             table.loc[in_group, "latitude"],
@@ -236,18 +232,14 @@ def plot_p2_precision_recall(
     for risk_class, color in zip(risk_classes, [BLUE, ORANGE]):
         is_class = np.asarray(y_true) == risk_class
         position = list(classes).index(risk_class)
-        precision, recall, _ = precision_recall_curve(
-            is_class, probabilities[:, position]
-        )
+        precision, recall, _ = precision_recall_curve(is_class, probabilities[:, position])
         # El último punto (recall 0, precisión 1) lo agrega scikit-learn por convención y no
         # corresponde a ningún umbral: se omite para no dibujar una raya vertical en el eje
         ax.plot(recall[:-1], precision[:-1], color=color, linewidth=2, label=risk_class)
         ax.axhline(is_class.mean(), color=color, linewidth=1, linestyle=":")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_xlabel(
-        "Recall (intervalos en riesgo detectados)", color=INK_SECONDARY, fontsize=9
-    )
+    ax.set_xlabel("Recall (intervalos en riesgo detectados)", color=INK_SECONDARY, fontsize=9)
     ax.set_ylabel("Precisión (alertas correctas)", color=INK_SECONDARY, fontsize=9)
     ax.set_title(
         "P2 · Curva precisión-recall por clase de riesgo",
