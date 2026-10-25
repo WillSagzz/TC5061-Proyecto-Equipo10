@@ -158,18 +158,23 @@ def standard_tags(
 ) -> dict[str, str]:
     """Etiquetas comunes a todos los runs del proyecto.
 
-    Solo lo que sirve para filtrar y MLflow no registra por su cuenta: ``equipo``, ``usuario``
-    (el del servidor compartido, no el del sistema que MLflow guarda en ``mlflow.user``),
-    ``pregunta``, ``git_commit`` y ``git_cambios_sin_commit`` (MLflow solo registra el commit
-    bajo ``mlflow run``), y al entrenar ``estimador`` y ``tipo_modelo``. Lo que define el
-    modelo (versión de datos, fechas, semilla, hiperparámetros) son parámetros, no etiquetas.
+    Solo lo que sirve para filtrar y MLflow no registra bien por su cuenta: ``equipo``,
+    ``mlflow.user`` (quién lo ejecutó: el usuario del servidor compartido en lugar de la
+    cuenta del sistema que pone MLflow), ``pregunta``, ``git_commit`` y
+    ``git_cambios_sin_commit`` (MLflow solo registra el commit bajo ``mlflow run``), y al
+    entrenar ``estimador`` y ``tipo_modelo``. Lo que define el modelo (versión de datos,
+    fechas, semilla, hiperparámetros) son parámetros, no etiquetas.
     """
     from mibici.config import MLFLOW_RUN_USER, TEAM
 
     commit, uncommitted = git_state()
     tags = {
         "equipo": TEAM,
-        "usuario": MLFLOW_RUN_USER,
+        # Quién lo ejecutó. MLflow llena mlflow.user con la cuenta del sistema operativo al
+        # crear el run (bajo `mlflow run`, antes de que corra el proyecto); se sobrescribe con
+        # el usuario del servidor, que es lo que la interfaz muestra en la columna "User" y
+        # por lo que se filtra (tags."mlflow.user" = "nombre").
+        "mlflow.user": MLFLOW_RUN_USER,
         "pregunta": QUESTION_LABELS[key],
         "git_commit": commit,
         "git_cambios_sin_commit": str(uncommitted),

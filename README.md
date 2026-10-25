@@ -448,12 +448,12 @@ y la escriben igual `train.py` y `dataset.py`; nadie inventa llaves nuevas al vu
   | `pregunta` | `P1`, `P2`, `P3`; `datos` en la ingesta |
   | `estimador` | `baseline`, `rf`, `hgb`, `kmeans` |
   | `tipo_modelo` | `baseline` (configuración fija de la propuesta) o `candidato` |
-  | `usuario` | quién lo ejecutó: el usuario del servidor compartido o, en local, el del sistema |
+  | `mlflow.user` | quién lo ejecutó: el usuario del servidor compartido o, en local, el del sistema. MLflow la llena con la cuenta del sistema operativo al crear el *run*; el proyecto la sobrescribe para que la columna *User* de la interfaz y el filtro `tags."mlflow.user" = "nombre"` muestren el usuario del servidor |
   | `git_commit`, `git_cambios_sin_commit` | commit y si había cambios sin confirmar (un *run* así no es reproducible) |
   | `mlflow.note.content` | una línea generada con pregunta, estimador, hiperparámetros y versión de datos; aparece como nota en la interfaz |
 
   `mlflow run` añade las suyas: punto de entrada, tipo y nombre de la fuente, commit y
-  entorno. Los integrantes son una etiqueta (`usuario`), nunca un experimento.
+  entorno. Los integrantes son una etiqueta (`mlflow.user`), nunca un experimento.
 - **Conjunto de datos como entrada del *run*:** el *dataset* `datapackage`, con
   `version_datos` como huella, en la pestaña *Datasets* de la interfaz.
 - **Artefactos:** al menos una figura por pregunta (serie real contra predicha en P1, matriz de
@@ -566,7 +566,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 |---|---|---|---|
 | MLflow Tracking | Un experimento por proyecto y *runs* con nombre descriptivo. | Experimento `mibici-equipo10`; nombres `P{n}-{etapa}-{modelo}` fijados en `train.py`. | Interfaz de MLflow. |
 | MLflow Tracking | Registrar todo lo necesario para reproducir el *run*. | Parámetros `version_datos`, fechas de la partición, `semilla`, modelo e hiperparámetros, tomados de `config.py` y de `datapackage.json`; el *dataset* como entrada del *run*. | Parámetros y pestaña *Datasets* del *run*. |
-| MLflow Tracking | Ligar cada *run* con el código, la pregunta y quien lo ejecutó. | Etiquetas `git_commit`, `pregunta`, `equipo`, `usuario` y `tipo_modelo`. | Etiquetas del *run*. |
+| MLflow Tracking | Ligar cada *run* con el código, la pregunta y quien lo ejecutó. | Etiquetas `git_commit`, `pregunta`, `equipo`, `mlflow.user` (usuario del servidor), `estimador` y `tipo_modelo`. | Etiquetas del *run*. |
 | MLflow Tracking | Métricas con el conjunto en el nombre. | `test_mae`, `test_recall_vaciarse`, `train_silhouette`, etc. | Métricas del *run*. |
 | MLflow Tracking | Sin credenciales ni datos personales. | La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento`; `.env` está fuera de Git. | Interfaz de MLflow y código. |
 | Estructura y código | *Notebooks* solo para exploración, con la convención de la plantilla. | La lógica final vive en `mibici/`; los *notebooks* se nombran `numero.version-iniciales-descripcion.ipynb`. | Carpeta `notebooks/`. |

@@ -126,7 +126,8 @@ REGISTERED_MODELS = {key: name for key, name in EXPERIMENTS.items() if key != "i
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
 MLFLOW_ARTIFACTS_DIR = PROJ_ROOT / "mlartifacts"
 # Quién ejecutó el run: el usuario del servidor compartido (MLFLOW_TRACKING_USERNAME en .env) o,
-# en modo local, el usuario del sistema operativo. train.py lo registra como etiqueta `usuario`.
+# en modo local, el usuario del sistema operativo. experiments.py lo escribe en la etiqueta
+# `mlflow.user`, que la interfaz muestra en la columna "User".
 try:
     MLFLOW_RUN_USER = os.getenv("MLFLOW_TRACKING_USERNAME") or getpass.getuser()
 except (KeyError, OSError, ImportError):  # contenedores o CI sin usuario conocido

@@ -119,8 +119,8 @@ Nada cambia respecto al modo local: con el `.env` presente, `mlflow run . -e tra
 (o `make train`) registra en el servidor, en el experimento de la pregunta (`mibici-p1-demanda`,
 `mibici-p2-riesgo`, `mibici-p3-perfiles`; la ingesta va a `mibici-ingesta`). El experimento lo
 elige el propio proyecto a partir de la pregunta, así que no hay que indicarlo. Cada *run* lleva
-la etiqueta `usuario` con tu nombre de usuario, además de `git_commit`, `pregunta`, `equipo`,
-`estimador` y `tipo_modelo`, así que en la interfaz se ve quién corrió qué.
+tu nombre de usuario del servidor en `mlflow.user` (la columna *User* de la interfaz), además
+de `git_commit`, `pregunta`, `equipo`, `estimador` y `tipo_modelo`, así que se ve quién corrió qué.
 
 ### 4. Ver los resultados
 
