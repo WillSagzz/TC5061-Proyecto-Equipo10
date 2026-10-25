@@ -329,6 +329,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make infra-*` | `az ...` | Despliegue y mantenimiento del servidor en Azure; solo para quien administra la suscripción. Ver [`infra/README.md`](infra/README.md). |
 | `make lint` / `make format` | `ruff format --check && ruff check` / `ruff check --fix && ruff format` | Verifica o corrige el estilo del código. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
+| `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 
 ## Experimento base en MLflow
 
@@ -395,7 +396,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 (`ccds`, con `include_code_scaffold = Yes`).
 
 ```
-├── Makefile              <- Reglas: data, snapshot, validate, train, lint, format, entrega01, infra-*, mlflow-password
+├── Makefile              <- Reglas: data, snapshot, validate, train, lint, format, entrega01, entrega02, infra-*, mlflow-password
 ├── README.md             <- Este documento
 ├── pyproject.toml        <- Metadatos del paquete `mibici` y configuración de Ruff
 ├── requirements.txt      <- Dependencias con versión fija para reproducir el entorno
@@ -411,7 +412,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 ├── docs
 │   ├── entregas          <- Fuente de los PDF de cada entrega y el compilador `build.py`
-│   │   └── entrega01     <- Propuesta: secciones en Markdown, figuras y capturas de MLflow
+│   │   ├── entrega01     <- Propuesta: secciones en Markdown, figuras y capturas de MLflow
+│   │   └── entrega02     <- Reporte de experimentos con MLflow: secciones en Markdown y capturas
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
 ├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
@@ -590,7 +592,7 @@ Se versiona el **código que produce** los datos, los experimentos y los modelos
 | `mlflow.db`, `mlartifacts/`, `mlruns/` | salida de los experimentos; cada *run* lleva el commit y la versión de datos con que se reproduce |
 | `*.pkl`, `*.pickle`, `*.joblib` | modelos serializados; se regeneran con `make train` |
 | `.env` y cualquier credencial | nunca deben salir del equipo local |
-| `docs/entregas/**/build/` | salidas compiladas de las entregas; se regeneran con `make entrega01` |
+| `docs/entregas/**/build/` | salidas compiladas de las entregas; se regeneran con `make entrega01` y `make entrega02` |
 
 Si algo de esto llega a `main`, borrarlo en un commit posterior **no** lo quita del historial:
 avisa al equipo antes de reescribir nada.
