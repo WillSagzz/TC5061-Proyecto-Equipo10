@@ -17,6 +17,12 @@ classifiers = [
 ]
 requires-python = ">=3.10.0"
 
+# Proveedor del experimento por defecto de MLflow: cuando el proyecto corre con `mlflow run`
+# sin --experiment-name, elige el experimento de la pregunta (ver mibici/experiments.py).
+# Se registra al instalar el paquete (`pip install -e .`).
+[project.entry-points."mlflow.default_experiment_provider"]
+mibici = "mibici.experiments:ProjectExperimentProvider"
+
 
 [tool.ruff]
 line-length = 99

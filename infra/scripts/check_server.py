@@ -24,10 +24,13 @@ import mlflow
 from mlflow.exceptions import MlflowException
 
 EXPERIMENT = "smoke-test"
+# Un experimento del equipo que ya existe, para la prueba de solo lectura
 try:
-    from mibici.config import MLFLOW_EXPERIMENT_NAME as TEAM_EXPERIMENT
+    from mibici.config import EXPERIMENTS
+
+    TEAM_EXPERIMENT = EXPERIMENTS["p1"]
 except ImportError:  # pragma: no cover
-    TEAM_EXPERIMENT = os.getenv("MLFLOW_EXPERIMENT_NAME", "mibici-equipo10")
+    TEAM_EXPERIMENT = os.getenv("MLFLOW_TEAM_EXPERIMENT", "mibici-p1-demanda")
 
 
 def main() -> None:

@@ -115,11 +115,12 @@ autenticación, la base de datos y el almacenamiento de artefactos.
 
 ### 3. Registrar experimentos
 
-Nada cambia respecto al modo local: con el `.env` presente, `make train` (o
-`python -m mibici.modeling.train p1`) registra en el servidor, en el experimento
-`mibici-equipo10`. Cada *run* lleva la etiqueta `usuario` con tu nombre de usuario, además de
-`git_commit`, `pregunta`, `equipo` y `tipo_modelo`, así que en la interfaz se ve quién corrió
-qué.
+Nada cambia respecto al modo local: con el `.env` presente, `mlflow run . -e train -P question=p1`
+(o `make train`) registra en el servidor, en el experimento de la pregunta (`mibici-p1-demanda`,
+`mibici-p2-riesgo`, `mibici-p3-perfiles`; la ingesta va a `mibici-ingesta`). El experimento lo
+elige el propio proyecto a partir de la pregunta, así que no hay que indicarlo. Cada *run* lleva
+la etiqueta `usuario` con tu nombre de usuario, además de `git_commit`, `pregunta`, `equipo`,
+`estimador` y `tipo_modelo`, así que en la interfaz se ve quién corrió qué.
 
 ### 4. Ver los resultados
 
@@ -146,7 +147,7 @@ El modo lo decide solo `MLFLOW_TRACKING_URI`:
 |---|---|
 | Trabajar en local un rato (iterar, depurar) | `MLFLOW_TRACKING_URI=sqlite:///mlflow.db make train` (una variable en la línea de comandos gana sobre el `.env`) |
 | Trabajar en local hasta nuevo aviso | Renombra `.env` a `.env.nube` y vuelve a renombrarlo cuando quieras el servidor |
-| Ver la base local | `mlflow ui --backend-store-uri sqlite:///mlflow.db` |
+| Ver la base local | `make mlflow-ui` (`mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000`) |
 
 Local y servidor son almacenes distintos: un *run* local nunca aparece en el servidor. El flujo
 previsto es iterar en local y correr el experimento definitivo contra el servidor.
@@ -177,7 +178,7 @@ make infra-secrets            # 3. genera infra/.secrets.env (contraseña de Pos
 make infra-plan               # 4. (opcional) what-if: lista lo que se va a crear, sin crear nada
 make infra-deploy             # 5. crea rg-mibici-equipo10 y los 12 recursos; imprime la URL (10-15 min)
 cp infra/users.example.txt infra/users.txt   # 6. escribe los usuarios reales (archivo local, no se versiona)
-make infra-users              # 7. crea los usuarios, el experimento mibici-equipo10 y los permisos
+make infra-users              # 7. crea los usuarios, los experimentos del equipo y los permisos
 ```
 
 Al terminar el paso 7, las contraseñas iniciales están en `infra/.users.env` (fuera de Git).
@@ -196,7 +197,7 @@ se restablece o se borra.
 
 `infra/users.txt` es la fuente: `usuario,rol` por línea, rol `editor` (ve todo y registra
 *runs*) o `lector` (solo lectura). `make infra-users` es idempotente: crea los que falten,
-crea el experimento `mibici-equipo10` si no existe y asigna a los editores el rol
+crea los experimentos del equipo (`EXPERIMENTS` en `mibici/config.py`) que no existan y asigna a los editores el rol
 `editores`, que tiene `EDIT` sobre `experiment:*` y `registered_model:*`. Como el permiso es
 por patrón y no por experimento, cubre también los experimentos que se creen después: no hay
 que volver a correr nada cuando alguien crea uno nuevo. Los lectores no reciben el rol y se

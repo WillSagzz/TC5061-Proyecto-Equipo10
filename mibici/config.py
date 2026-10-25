@@ -93,7 +93,34 @@ DATA_END = date(
 
 # MLflow Tracking
 TEAM = "equipo10"
-MLFLOW_EXPERIMENT_NAME = f"mibici-{TEAM}"
+# Un experimento por pregunta y otro para la ingesta. Cada pregunta tiene su propia tabla,
+# variable objetivo y métricas, así que sus runs solo se comparan entre sí; una versión nueva
+# de los datos no abre un experimento nuevo (el run registra `version_datos`). El experimento
+# lo elige el propio proyecto a partir de la pregunta (experiments.py), de modo que
+# `mlflow run` no necesita --experiment-name.
+EXPERIMENTS = {
+    "p1": "mibici-p1-demanda",
+    "p2": "mibici-p2-riesgo",
+    "p3": "mibici-p3-perfiles",
+    "ingesta": "mibici-ingesta",
+}
+EXPERIMENT_TASKS = {
+    "p1": "regresion",
+    "p2": "clasificacion",
+    "p3": "clustering",
+    "ingesta": "ingesta",
+}
+EXPERIMENT_DESCRIPTIONS = {
+    "p1": "P1 · Regresión: viajes iniciados por estación y hora (horizonte de 24 h).",
+    "p2": "P2 · Clasificación: riesgo de que una estación se vacíe o se llene en el siguiente "
+    "intervalo de 3 h.",
+    "p3": "P3 · Clustering: perfiles de uso de las estaciones (solo periodo de entrenamiento).",
+    "ingesta": "Ingesta reproducible: un run por versión de datos reconstruida desde "
+    "datapackage.json.",
+}
+# Nombres reservados para el Model Registry (un modelo registrado por pregunta, con versiones
+# y alias `baseline` y `elegido`); todavía no se usan.
+REGISTERED_MODELS = {key: name for key, name in EXPERIMENTS.items() if key != "ingesta"}
 # Por defecto, una base local en la raíz del proyecto (excluida de Git). Para usar un
 # servidor de MLflow, definir MLFLOW_TRACKING_URI en el archivo .env.
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
