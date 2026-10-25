@@ -114,6 +114,14 @@ blockquote p:last-child { margin-bottom: 0; }
 }
 .pendiente p:last-child { margin-bottom: 0; }
 
+/* Lista de referencias en APA 7: alineada a la izquierda y con sangria francesa de 0.5 in. */
+.referencias p {
+  text-align: left;
+  padding-left: 0.5in;
+  text-indent: -0.5in;
+  margin-bottom: 0.9em;
+}
+
 .pagebreak { page-break-before: always; break-before: page; }
 
 /* Un titulo de tabla (parrafo que empieza en negritas y precede a una tabla) no se separa de su tabla. */
