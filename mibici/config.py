@@ -174,3 +174,7 @@ SEARCH_GRIDS = {
     "p2": {"hgb": {"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63]}},
     "p3": {"kmeans": {"n_clusters": P3_K_VALUES}, "gmm": {"n_clusters": P3_K_VALUES}},
 }
+
+# Umbrales de alerta de P2 (modeling/thresholds.py): probabilidad mínima para avisar
+# `vaciarse` o `llenarse`. Se prueban de 0.05 a 0.95 y se elige con validación.
+P2_THRESHOLD_GRID = [round(0.05 * step, 2) for step in range(1, 20)]
