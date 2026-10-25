@@ -1,8 +1,12 @@
 """Ingesta reproducible de los datos abiertos de MiBici.
 
-Uso desde la raíz del repositorio (``make data``):
+Uso desde la raíz del repositorio, como punto de entrada del MLflow Project (``make data``):
 
-    python -m mibici.dataset
+    mlflow run . -e ingest
+
+o directo, para depurar: ``python -m mibici.dataset``. Bajo ``mlflow run`` la ingesta queda
+registrada como un run del experimento ``mibici-ingesta`` (nombre ``ingesta-{version}``, la
+versión como parámetro y ``datapackage.json`` como artefacto); directo no registra nada.
 
 Reconstruye la versión de datos descrita en ``datapackage.json`` (descriptor Frictionless Data
 Package que escribe ``make snapshot``, ver ``datapackage.py``): descarga a ``data/raw/`` los
@@ -13,7 +17,9 @@ coinciden con los que describe el descriptor. Rutas, fechas y reglas de limpieza
 ``config.py``.
 """
 
+from contextlib import contextmanager
 import hashlib
+import os
 from pathlib import Path
 import time
 import unicodedata
@@ -588,6 +594,35 @@ def verify_processed(package: Package) -> None:
     logger.success(f"Los Parquet procesados coinciden con {DATAPACKAGE_PATH.name}")
 
 
+# MARK: MLflow
+@contextmanager
+def _ingest_run(version: str, datapackage_path: Path):
+    """Registra la ingesta como run de MLflow solo cuando corre bajo ``mlflow run``.
+
+    ``mlflow run`` crea el run antes de lanzar este código y deja su id en ``MLFLOW_RUN_ID``;
+    aquí se reanuda para ponerle nombre, etiquetas, la versión de datos como parámetro y el
+    descriptor como artefacto (convención de ``experiments.py``). Sin ``MLFLOW_RUN_ID`` no
+    se toca MLflow.
+    """
+    if not os.getenv("MLFLOW_RUN_ID"):
+        yield
+        return
+    import mlflow
+
+    from mibici.config import MLFLOW_TRACKING_URI
+    from mibici.experiments import NOTE_TAG, run_name, run_note, standard_tags
+
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    label = run_name("ingesta", label=version)
+    with mlflow.start_run(run_name=label) as run:
+        if run.info.run_name != label:
+            mlflow.set_tag("mlflow.runName", label)
+        mlflow.set_tags(standard_tags("ingesta") | {NOTE_TAG: run_note("ingesta", version)})
+        mlflow.log_param("version_datos", version)
+        mlflow.log_artifact(str(datapackage_path), artifact_path="datos")
+        yield
+
+
 # MARK: Main fn
 @app.command()
 def main(datapackage_path: Path = DATAPACKAGE_PATH) -> None:
@@ -601,16 +636,16 @@ def main(datapackage_path: Path = DATAPACKAGE_PATH) -> None:
         logger.info(
             f"Versión de datos {package.version} ({package.name}) de {Path(datapackage_path).name}"
         )
-
-        # 1. Descarga lo que falte y verifica tamaño y hash antes de procesar
-        filenames = ensure_raw_files(package)
-        # 2. Valida una muestra de cada archivo contra el esquema declarado
-        validate_raw_sample(package)
-        # 3. Normaliza, limpia y escribe los Parquet
-        df_months, df_nom = process_raw(RAW_DATA_DIR, filenames)
-        write_processed(df_months, df_nom)
-        # 4. Comprueba que los Parquet son los que describe el descriptor
-        verify_processed(package)
+        with _ingest_run(str(package.version), Path(datapackage_path)):
+            # 1. Descarga lo que falte y verifica tamaño y hash antes de procesar
+            filenames = ensure_raw_files(package)
+            # 2. Valida una muestra de cada archivo contra el esquema declarado
+            validate_raw_sample(package)
+            # 3. Normaliza, limpia y escribe los Parquet
+            df_months, df_nom = process_raw(RAW_DATA_DIR, filenames)
+            write_processed(df_months, df_nom)
+            # 4. Comprueba que los Parquet son los que describe el descriptor
+            verify_processed(package)
     except DataVersionError as error:
         logger.error(str(error))
         raise typer.Exit(code=1) from error
