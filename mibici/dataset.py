@@ -17,7 +17,7 @@ coinciden con los que describe el descriptor. Rutas, fechas y reglas de limpieza
 ``config.py``.
 """
 
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 import hashlib
 import os
 from pathlib import Path
@@ -608,29 +608,26 @@ def _ingest_run(version: str, datapackage_path: Path):
     import mlflow
 
     from mibici.experiments import (
+        NOTE_TAG,
         ExperimentMismatchError,
-        open_run,
-        run_name,
+        resolve_experiment,
         run_note,
-        standard_tags,
+        run_tags,
     )
 
-    with ExitStack() as stack:
-        try:
-            stack.enter_context(
-                open_run(
-                    "ingesta",
-                    run_name("ingesta", label=version),
-                    standard_tags("ingesta"),
-                    run_note("ingesta", version),
-                )
-            )
-        except ExperimentMismatchError as error:
-            logger.error(str(error))
-            raise typer.Exit(code=1) from error
+    try:
+        experiment = resolve_experiment("ingesta")
+    except ExperimentMismatchError as error:
+        logger.error(str(error))
+        raise typer.Exit(code=1) from error
+    run_name = f"ingesta-{version}"
+    with mlflow.start_run(run_name=run_name):
+        mlflow.set_tag("mlflow.runName", run_name)
+        mlflow.set_tags(run_tags("ingesta", "ingesta") | {NOTE_TAG: run_note("ingesta", version)})
         mlflow.log_param("version_datos", version)
         mlflow.log_artifact(str(datapackage_path), artifact_path="datos")
         yield
+    logger.success(f"Run '{run_name}' registrado en '{experiment}'")
 
 
 # MARK: Main fn

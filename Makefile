@@ -3,7 +3,7 @@
 #################################################################################
 
 PROJECT_NAME = TC5061-Proyecto-Equipo10
-PYTHON_VERSION = 3.12
+PYTHON_VERSION = 3.10
 PYTHON_INTERPRETER = python
 
 # --env-manager local: usa el entorno activado (el gestor por defecto necesita pyenv)
@@ -98,11 +98,17 @@ baselines:
 .PHONY: train
 train: baselines
 
-## Train one model: make run Q=p1 M=rf P="n_estimators=300 max_depth=8" (M defaults to baseline)
+## Train one model: make run Q=p1 M=ridge P="alpha=10" (M defaults to baseline; models in candidates.py)
 .PHONY: run
 run:
-	@test -n "$(Q)" || { echo 'Uso: make run Q=p1 [M=rf] [P="n_estimators=300 max_depth=8"]'; exit 1; }
+	@test -n "$(Q)" || { echo 'Uso: make run Q=p1 [M=ridge] [P="alpha=10"]'; exit 1; }
 	$(MLFLOW_RUN) -e train -P question=$(Q) -P model=$(or $(M),baseline) $(foreach p,$(P),-P $(p))
+
+## Hyperparameter search with nested runs: make search Q=p1 M=hgb (grids in config.py SEARCH_GRIDS)
+.PHONY: search
+search:
+	@test -n "$(Q)" && test -n "$(M)" || { echo 'Uso: make search Q=p1 M=hgb'; exit 1; }
+	$(MLFLOW_RUN) -e search -P question=$(Q) -P model=$(M)
 
 
 ## Open the MLflow UI on the local SQLite database (http://127.0.0.1:5000)
@@ -114,6 +120,12 @@ mlflow-ui:
 .PHONY: entrega01
 entrega01:
 	$(PYTHON_INTERPRETER) docs/entregas/build.py docs/entregas/entrega01
+
+
+## Compile Entrega 02 (Markdown -> HTML -> PDF) into docs/entregas/entrega02/build/
+.PHONY: entrega02
+entrega02:
+	$(PYTHON_INTERPRETER) docs/entregas/build.py docs/entregas/entrega02
 
 
 #################################################################################

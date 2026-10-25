@@ -1,5 +1,4 @@
-# Entorno del MLflow Project: las mismas versiones fijas de requirements.txt.
-python: "3.12"
+python: "3.10"
 build_dependencies:
   - pip
 dependencies:
