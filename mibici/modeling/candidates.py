@@ -28,6 +28,7 @@ from mibici.modeling.baselines import (
     build_p2_baseline,
     build_p3_baseline,
 )
+from mibici.modeling.thresholds import ThresholdClassifier
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,10 @@ CATALOG: dict[str, dict[str, ModelSpec]] = {
         "hgb": ModelSpec("boosting", _p2_hgb, MODEL_DEFAULTS["hgb"]),
         "hgb_unweighted": ModelSpec(
             "boosting", lambda hp: _p2_hgb(hp, class_weight=None), MODEL_DEFAULTS["hgb"]
+        ),
+        # El mismo hgb con pesos por clase, con el umbral de alerta ajustado en validación
+        "hgb_threshold": ModelSpec(
+            "boosting", lambda hp: ThresholdClassifier(_p2_hgb(hp)), MODEL_DEFAULTS["hgb"]
         ),
     },
     "p3": {
