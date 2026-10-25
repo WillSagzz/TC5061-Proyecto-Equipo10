@@ -178,7 +178,7 @@ make infra-secrets            # 3. genera infra/.secrets.env (contraseña de Pos
 make infra-plan               # 4. (opcional) what-if: lista lo que se va a crear, sin crear nada
 make infra-deploy             # 5. crea rg-mibici-equipo10 y los 12 recursos; imprime la URL (10-15 min)
 cp infra/users.example.txt infra/users.txt   # 6. escribe los usuarios reales (archivo local, no se versiona)
-make infra-users              # 7. crea los usuarios, los experimentos del equipo y los permisos
+make infra-users              # 7. crea los usuarios y les asigna su rol
 ```
 
 Al terminar el paso 7, las contraseñas iniciales están en `infra/.users.env` (fuera de Git).
@@ -196,11 +196,11 @@ se restablece o se borra.
 ### Usuarios y permisos
 
 `infra/users.txt` es la fuente: `usuario,rol` por línea, rol `editor` (ve todo y registra
-*runs*) o `lector` (solo lectura). `make infra-users` es idempotente: crea los que falten,
-crea los experimentos del equipo (`EXPERIMENTS` en `mibici/config.py`) que no existan y asigna a los editores el rol
-`editores`, que tiene `EDIT` sobre `experiment:*` y `registered_model:*`. Como el permiso es
-por patrón y no por experimento, cubre también los experimentos que se creen después: no hay
-que volver a correr nada cuando alguien crea uno nuevo. Los lectores no reciben el rol y se
+*runs*) o `lector` (solo lectura). `make infra-users` es idempotente: crea los que falten y
+asigna a los editores el rol `editores`, que tiene `EDIT` sobre `experiment:*` y
+`registered_model:*`. Como el permiso es por patrón y no por experimento, cubre los
+experimentos que el proyecto crea solo al primer `mlflow run` (uno por pregunta y el de la
+ingesta) y cualquier otro que aparezca después. Los lectores no reciben el rol y se
 quedan con el permiso por defecto del servidor, `READ`.
 
 | Tarea | Cómo |

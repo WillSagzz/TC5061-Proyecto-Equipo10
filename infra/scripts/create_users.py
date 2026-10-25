@@ -27,15 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from auth_api import AuthApi
 
 INFRA_DIR = Path(__file__).resolve().parents[1]
-# Los experimentos del equipo (uno por pregunta y el de la ingesta) viven en mibici/config.py;
-# si el paquete no está instalado en este entorno se toman de MLFLOW_EXPERIMENTS (separados
-# por comas) o no se crea ninguno.
-try:
-    from mibici.config import EXPERIMENTS
-
-    EXPERIMENT_NAMES = list(EXPERIMENTS.values())
-except ImportError:  # pragma: no cover
-    EXPERIMENT_NAMES = [n for n in os.getenv("MLFLOW_EXPERIMENTS", "").split(",") if n]
+# Los experimentos no se crean aquí: los crea el propio proyecto al primer `mlflow run`
+# (mibici/experiments.py) y el rol con comodín de abajo da EDIT sobre cualquiera de ellos.
 
 ROLES = {"editor": True, "lector": False}  # ¿recibe el rol de edición?
 PROTECTED = {
@@ -150,13 +143,6 @@ def main() -> None:
         save_password(args.out, username, password)
         new_passwords += 1
         print(f"  * {username}: contraseña restablecida")
-
-    # Los experimentos del equipo se crean aquí para que existan desde el primer `mlflow run`
-    # (la descripción y las etiquetas las completa el proyecto al primer uso).
-    for experiment_name in EXPERIMENT_NAMES:
-        if api.get_experiment_by_name(experiment_name) is None:
-            api.create_experiment(experiment_name)
-            print(f"  + experimento '{experiment_name}': creado")
 
     # Un rol con comodín en lugar de permisos por experimento: cubre también los experimentos
     # que se creen después, sin volver a correr este script. Los lectores no reciben el rol y
