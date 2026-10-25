@@ -17,6 +17,10 @@ classifiers = [
 ]
 requires-python = ">=3.10.0"
 
+# Plugin de MLflow que elige el experimento de cada `mlflow run` (mibici/experiments.py)
+[project.entry-points."mlflow.default_experiment_provider"]
+mibici = "mibici.experiments:ProjectExperimentProvider"
+
 
 [tool.ruff]
 line-length = 99

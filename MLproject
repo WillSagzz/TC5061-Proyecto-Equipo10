@@ -9,7 +9,7 @@ entry_points:
   ingest:
     command: "python -m mibici.dataset"
 
-  # Entrena un modelo y lo registra en el experimento mibici-equipo10.
+  # Entrena un modelo y lo registra en el experimento de la pregunta (lo elige el proyecto).
   # model: baseline o un candidato de mibici/modeling/candidates.py.
   # Los hiperparámetros vacíos toman su valor de MODEL_DEFAULTS en mibici/config.py.
   train:

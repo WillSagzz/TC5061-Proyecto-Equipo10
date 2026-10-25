@@ -34,7 +34,7 @@ try:
 
     logger.remove(0)
     logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True)
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ValueError):  # sin tqdm, o el sink 0 ya fue retirado
     pass
 
 
@@ -93,13 +93,34 @@ DATA_END = date(
 
 # MLflow Tracking
 TEAM = "equipo10"
-MLFLOW_EXPERIMENT_NAME = f"mibici-{TEAM}"
+# Un experimento por pregunta (cada una tiene su propia tabla, objetivo y métricas) y otro
+# para la ingesta; los elige experiments.py a partir de la pregunta.
+EXPERIMENTS = {
+    "p1": "mibici-p1-demanda",
+    "p2": "mibici-p2-riesgo",
+    "p3": "mibici-p3-perfiles",
+    "ingesta": "mibici-ingesta",
+}
+EXPERIMENT_TASKS = {
+    "p1": "regresion",
+    "p2": "clasificacion",
+    "p3": "clustering",
+    "ingesta": "ingesta",
+}
+EXPERIMENT_DESCRIPTIONS = {
+    "p1": "P1 · Regresión: viajes iniciados por estación y hora (horizonte de 24 h).",
+    "p2": "P2 · Clasificación: riesgo de que una estación se vacíe o se llene en el siguiente "
+    "intervalo de 3 h.",
+    "p3": "P3 · Clustering: perfiles de uso de las estaciones (solo periodo de entrenamiento).",
+    "ingesta": "Ingesta reproducible: un run por versión de datos reconstruida desde "
+    "datapackage.json.",
+}
 # Por defecto, una base local en la raíz del proyecto (excluida de Git). Para usar un
 # servidor de MLflow, definir MLFLOW_TRACKING_URI en el archivo .env.
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
 MLFLOW_ARTIFACTS_DIR = PROJ_ROOT / "mlartifacts"
-# Quién ejecutó el run: el usuario del servidor compartido (MLFLOW_TRACKING_USERNAME en .env) o,
-# en modo local, el usuario del sistema operativo. train.py lo registra como etiqueta `usuario`.
+# Quién ejecutó el run (etiqueta mlflow.user): el usuario del servidor compartido
+# (MLFLOW_TRACKING_USERNAME en .env) o, en modo local, el del sistema operativo.
 try:
     MLFLOW_RUN_USER = os.getenv("MLFLOW_TRACKING_USERNAME") or getpass.getuser()
 except (KeyError, OSError, ImportError):  # contenedores o CI sin usuario conocido

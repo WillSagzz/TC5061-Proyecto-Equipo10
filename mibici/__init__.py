@@ -5,5 +5,3 @@ import warnings
 warnings.filterwarnings(
     "ignore", message=r"urllib3 .* or chardet .* doesn't match a supported version"
 )
-
-from mibici import config  # noqa: F401

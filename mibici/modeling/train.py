@@ -1,18 +1,16 @@
 """Entrena los baselines y los candidatos de P1, P2 y P3 y los registra en MLflow Tracking.
 
-Se ejecuta como MLflow Project (``MLproject`` en la raíz del repositorio). ``python -m dotenv
-run --`` carga el ``.env`` para que ``mlflow run`` registre en el mismo servidor que el código:
+Se ejecuta como MLflow Project (``MLproject`` en la raíz del repositorio). El experimento (uno
+por pregunta, ``EXPERIMENTS`` en ``config.py``) lo elige el propio proyecto a partir de
+``question``, y el ``.env`` lo carga el plugin de ``experiments.py``; no hay que indicarlos:
 
-    python -m dotenv run -- mlflow run . -e train --env-manager local \\
-        --experiment-name mibici-equipo10 -P question=p1 -P model=ridge -P alpha=10
-
-    python -m dotenv run -- mlflow run . -e search --env-manager local \\
-        --experiment-name mibici-equipo10 -P question=p1 -P model=hgb
+    mlflow run . -e train --env-manager local -P question=p1 -P model=ridge -P alpha=10
+    mlflow run . -e search --env-manager local -P question=p1 -P model=hgb
 
 Para depurar, también se puede llamar sin MLflow Project:
 
     python -m mibici.modeling.train run --question p1 --model ridge
-    python -m mibici.modeling.train all          # los tres baselines (make train)
+    python -m mibici.modeling.train all          # los tres baselines
 
 Los modelos disponibles están en ``modeling/candidates.py``; sus hiperparámetros por defecto
 y las rejillas de búsqueda, en ``config.py``.
@@ -22,17 +20,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import itertools
 import json
-import os
-import subprocess
 from typing import Annotated
 
-from dotenv import dotenv_values
 import joblib
 from loguru import logger
 import mlflow
 from mlflow.data.http_dataset_source import HTTPDatasetSource
 from mlflow.data.meta_dataset import MetaDataset
-from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
 import numpy as np
 import pandas as pd
@@ -54,19 +48,21 @@ from mibici.config import (
     DAY_PERIODS,
     FIGURES_DIR,
     MIBICI_DATA_PAGE,
-    MLFLOW_ARTIFACTS_DIR,
-    MLFLOW_EXPERIMENT_NAME,
-    MLFLOW_RUN_USER,
-    MLFLOW_TRACKING_URI,
     MODELS_DIR,
     P3_K_VALUES,
     PROJ_ROOT,
     RANDOM_SEED,
     SEARCH_GRIDS,
-    TEAM,
     TEST_START,
     TRAIN_START,
     VALIDATION_START,
+)
+from mibici.experiments import (
+    NOTE_TAG,
+    ExperimentMismatchError,
+    resolve_experiment,
+    run_note,
+    run_tags,
 )
 from mibici.features import (
     P1_FEATURES,
@@ -159,84 +155,23 @@ def _load_question(question: str) -> QuestionData:
 # -----------------------------------------------------------------------------
 # Utilidades de MLflow
 # -----------------------------------------------------------------------------
-def _get_git_commit() -> tuple[str, bool]:
-    """Devuelve el commit actual y si hay cambios sin commit (un run así no es reproducible)."""
-    try:
-        commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=PROJ_ROOT, capture_output=True, text=True, check=True
-        ).stdout.strip()
-        changes = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
-            cwd=PROJ_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        return commit, bool(changes)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.warning("No se encontró un repositorio Git: el run quedará sin commit")
-        return "sin_git", True
-
-
-def _setup_mlflow() -> None:
-    """Conecta con MLflow y crea el experimento del equipo si todavía no existe."""
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    if mlflow.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME) is None:
-        location = (
-            MLFLOW_ARTIFACTS_DIR.as_uri() if MLFLOW_TRACKING_URI.startswith("sqlite") else None
-        )
-        mlflow.create_experiment(MLFLOW_EXPERIMENT_NAME, artifact_location=location)
-    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
-
-
-def _check_project_run() -> None:
-    """Revisa la corrida que creó ``mlflow run``, antes de escribir en ella.
-
-    ``mlflow run`` crea la corrida en el servidor de su terminal, que no lee el ``.env``. Si
-    ese servidor no es el del ``.env``, o si la corrida quedó en otro experimento, se detiene
-    con un mensaje que explica cómo lanzar el proyecto.
-
-    Raises:
-        RuntimeError: Si la corrida no está en el servidor del ``.env`` o está en otro
-            experimento.
-    """
-    run_id = os.getenv("MLFLOW_RUN_ID")
-    if not run_id:
-        return
-    env_uri = dotenv_values(PROJ_ROOT / ".env").get("MLFLOW_TRACKING_URI")
-    if env_uri and env_uri != MLFLOW_TRACKING_URI:
-        raise RuntimeError(
-            "mlflow run creó la corrida sin leer el .env (en un MLflow local, no en el servidor "
-            "del equipo). Lanza el proyecto con el .env cargado: "
-            "python -m dotenv run -- mlflow run ..."
-        )
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    client = mlflow.MlflowClient()
-    try:
-        run = client.get_run(run_id)
-    except MlflowException as error:
-        raise RuntimeError(
-            "mlflow run creó la corrida en un MLflow distinto al de config.py. Con .env, lanza "
-            "el proyecto con python -m dotenv run -- mlflow run ...; sin .env (modo local), "
-            "define antes MLFLOW_TRACKING_URI=sqlite:///mlflow.db en la terminal"
-        ) from error
-    experiment = client.get_experiment(run.info.experiment_id).name
-    if experiment != MLFLOW_EXPERIMENT_NAME:
-        raise RuntimeError(
-            f"La corrida quedó en el experimento '{experiment}'. "
-            f"Lanza mlflow run con --experiment-name {MLFLOW_EXPERIMENT_NAME}"
-        )
-
-
 @contextmanager
-def _start_run(question: str, run_name: str, family: str, stage: str, nested: bool = False):
+def _start_run(
+    question: str,
+    run_name: str,
+    family: str,
+    stage: str,
+    nested: bool = False,
+    note: str | None = None,
+):
     """Abre un run con las etiquetas y los parámetros comunes a todas las preguntas.
 
     Etiquetas: equipo, usuario, pregunta, commit de Git, familia del modelo y etapa del
     trabajo (``baseline``, ``candidato`` o ``busqueda``). Parámetros: fechas de la partición,
     versión de los datos y semilla. Los runs principales registran además el conjunto de
     datos como entrada (pestaña *Datasets*) y ``datapackage.json`` como artefacto. Si el
-    programa se lanzó con ``mlflow run``, continúa la corrida que este creó.
+    programa se lanzó con ``mlflow run``, continúa la corrida que este creó, en el experimento
+    de la pregunta (``experiments.py``).
 
     Args:
         question: ``"p1"``, ``"p2"`` o ``"p3"``.
@@ -244,28 +179,22 @@ def _start_run(question: str, run_name: str, family: str, stage: str, nested: bo
         family: Familia del modelo (``dummy``, ``lineal``, ``boosting``…).
         stage: ``"baseline"``, ``"candidato"`` o ``"busqueda"``.
         nested: ``True`` para una corrida hija dentro de una búsqueda.
+        note: Una línea para la nota del run en la interfaz.
     """
     if not nested:
-        _check_project_run()
-        _setup_mlflow()
-    commit, uncommitted_changes = _get_git_commit()
-    if uncommitted_changes and not nested:
+        try:
+            experiment = resolve_experiment(question)
+        except ExperimentMismatchError as error:
+            logger.error(str(error))
+            raise typer.Exit(code=1) from error
+    tags = run_tags(question, stage, family)
+    if tags["git_cambios_sin_commit"] == "True" and not nested:
         logger.warning("Hay cambios sin commit: haz commit antes del run definitivo")
     data_version = get_data_version()
     with mlflow.start_run(run_name=run_name, nested=nested) as run:
         # mlflow run le pone un nombre aleatorio a la corrida: se reemplaza por el descriptivo
         mlflow.set_tag("mlflow.runName", run_name)
-        mlflow.set_tags(
-            {
-                "equipo": TEAM,
-                "usuario": MLFLOW_RUN_USER,
-                "pregunta": question.upper(),
-                "git_commit": commit,
-                "git_cambios_sin_commit": str(uncommitted_changes),
-                "familia_modelo": family,
-                "etapa": stage,
-            }
-        )
+        mlflow.set_tags(tags | ({NOTE_TAG: note} if note else {}))
         mlflow.log_params(
             {
                 "inicio_entrenamiento": TRAIN_START,
@@ -287,7 +216,8 @@ def _start_run(question: str, run_name: str, family: str, stage: str, nested: bo
             )
             mlflow.log_artifact(str(DATAPACKAGE_PATH), artifact_path="datos")
         yield run
-        logger.success(f"Run '{run_name}' registrado en '{MLFLOW_EXPERIMENT_NAME}'")
+        if not nested:
+            logger.success(f"Run '{run_name}' registrado en '{experiment}'")
 
 
 def _log_run_config(
@@ -525,7 +455,8 @@ def train_model(question: str, model_name: str, overrides: dict[str, str] | None
         stage = "candidato"
         label = _hyperparams_label(hyperparams)
         run_name = f"{question.upper()}-candidato-{model_name}" + (f"-{label}" if label else "")
-    with _start_run(question, run_name, spec.family, stage):
+    note = run_note(question, get_data_version(), model_name, **hyperparams)
+    with _start_run(question, run_name, spec.family, stage, note=note):
         _fit_and_log(data, model_name, hyperparams, full=True)
         if question == "p3" and model_name == "baseline":
             _log_k_curves(data)
