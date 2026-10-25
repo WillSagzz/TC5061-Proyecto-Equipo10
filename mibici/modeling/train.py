@@ -52,6 +52,10 @@ from mibici.config import (
     VALIDATION_START,
 )
 from mibici.features import (
+    P1_FEATURES,
+    P1_TARGET,
+    P2_FEATURES,
+    P2_TARGET,
     P3_FEATURES,
     RISK_CLASSES,
     RISK_EMPTY,
@@ -239,23 +243,25 @@ def p1() -> None:
     splits = split_by_date(table, "period_start")
 
     # 3. Entrenar solo con el conjunto de entrenamiento
-    model = build_p1_baseline().fit(splits["train"], splits["train"]["departures"])
+    model = build_p1_baseline().fit(splits["train"][P1_FEATURES], splits["train"][P1_TARGET])
 
     # 4. Registrar en MLflow
     with _start_run("P1", "P1-baseline-dummy-estacion-hora"):
         mlflow.log_params(_model_params(model))
         mlflow.log_params(
             {f"filas_{name}": len(split) for name, split in splits.items()}
-            | {"n_grupos": model.n_groups_}
+            | {"n_grupos": model.n_groups_, "variables": ", ".join(P1_FEATURES)}
         )
         for name, split in splits.items():
             mlflow.log_metrics(
-                _regression_metrics(split["departures"], model.predict(split), prefix=name)
+                _regression_metrics(
+                    split[P1_TARGET], model.predict(split[P1_FEATURES]), prefix=name
+                )
             )
 
         figure = plot_p1_actual_vs_predicted(
             splits["test"],
-            model.predict(splits["test"]),
+            model.predict(splits["test"][P1_FEATURES]),
             FIGURES_DIR / "p1_real_vs_baseline.png",
         )
         mlflow.log_artifact(str(figure), artifact_path="graficas")
@@ -276,28 +282,28 @@ def p2() -> None:
     splits = split_by_date(table, "period_start")
 
     # 3. Entrenar solo con el conjunto de entrenamiento
-    model = build_p2_baseline().fit(splits["train"], splits["train"]["risk"])
+    model = build_p2_baseline().fit(splits["train"][P2_FEATURES], splits["train"][P2_TARGET])
 
     # 4. Registrar en MLflow
     with _start_run("P2", "P2-baseline-dummy-estacion-intervalo-tipo-dia"):
         mlflow.log_params(_model_params(model))
         mlflow.log_params(
             {f"filas_{name}": len(split) for name, split in splits.items()}
-            | {"n_grupos": model.n_groups_}
+            | {"n_grupos": model.n_groups_, "variables": ", ".join(P2_FEATURES)}
         )
         for name, split in splits.items():
             metrics = _classification_metrics(
-                split["risk"],
-                model.predict(split),
-                model.predict_proba(split),
+                split[P2_TARGET],
+                model.predict(split[P2_FEATURES]),
+                model.predict_proba(split[P2_FEATURES]),
                 model.classes_,
                 name,
             )
             mlflow.log_metrics(metrics)
 
         figure = plot_p2_confusion_matrix(
-            splits["test"]["risk"],
-            model.predict(splits["test"]),
+            splits["test"][P2_TARGET],
+            model.predict(splits["test"][P2_FEATURES]),
             RISK_CLASSES,
             FIGURES_DIR / "p2_matriz_confusion_baseline.png",
         )

@@ -14,13 +14,14 @@ Funciones compartidas por las tres preguntas:
 - ``load_data``: carga los viajes y las estaciones y valida el contrato.
 - ``get_data_version``: versión de los datos (``datapackage.json``), para registrarla en MLflow.
 - ``split_by_date``: partición temporal en entrenamiento, validación y prueba.
-- ``build_station_period_table``: salidas, llegadas y flujo neto por estación y periodo
-  (P1 y P2).
+- ``build_station_period_table``: salidas, llegadas y flujo neto por estación y periodo,
+  con la ventana en que cada estación estuvo activa (P1 y P2).
 - ``add_calendar_features``: hora del día, día de la semana y fin de semana (P1 y P2).
-- ``add_lag_features``: rezagos y promedio móvil calculados solo con periodos anteriores
-  (P1 y P2).
+- ``add_lag_features``: rezagos y promedio móvil calculados solo con periodos cerrados antes
+  del horizonte de la predicción (P1 y P2).
 
-Funciones de cada pregunta: ``build_p1_table``, ``build_p2_table`` y ``build_p3_table``.
+Funciones de cada pregunta: ``build_p1_table``, ``build_p2_table`` y ``build_p3_table``. Los
+modelos de P1 y P2 solo reciben las columnas de ``P1_FEATURES`` y ``P2_FEATURES``.
 """
 
 import json
@@ -38,6 +39,9 @@ from mibici.config import (
     FLOW_LAG_HOURS,
     LAG_HOURS,
     NO_SERVICE_HOURS,
+    P1_FLOW_LAG_HOURS,
+    P1_HORIZON_HOURS,
+    P1_LAG_HOURS,
     P2_INTERVAL_HOURS,
     RISK_THRESHOLD,
     ROLLING_WINDOW,
@@ -66,6 +70,23 @@ RISK_EMPTY = "vaciarse"
 RISK_FULL = "llenarse"
 NO_RISK = "sin_riesgo"
 RISK_CLASSES = [RISK_EMPTY, RISK_FULL, NO_RISK]
+
+# Variables de entrada de P1: solo lo que se conoce al cierre del día anterior. Quedan fuera
+# la variable objetivo y los movimientos de la propia hora (``departures``, ``arrivals`` y
+# ``net_flow``): las salidas son exactamente llegadas − flujo neto, así que cualquiera de las
+# dos revelaría la respuesta. ``station_id`` y ``hour_of_day`` son los grupos del baseline.
+P1_TARGET = "departures"
+P1_FEATURES = [
+    "station_id",
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend",
+    "capacity",
+    *[f"departures_lag_{hours}" for hours in P1_LAG_HOURS],
+    *[f"arrivals_lag_{hours}" for hours in P1_FLOW_LAG_HOURS],
+    *[f"net_flow_lag_{hours}" for hours in P1_FLOW_LAG_HOURS],
+    f"departures_mean_{ROLLING_WINDOW}_lag_{P1_HORIZON_HOURS}",
+]
 
 # Variables con las que se agrupan las estaciones en P3 (latitud y longitud no entran).
 # Son las cinco de la Tabla 4 de la propuesta; la primera ocupa cuatro columnas.
@@ -248,6 +269,13 @@ def build_station_period_table(
     último, y las combinaciones sin viajes quedan en 0, para que las series sean continuas y
     sin huecos. P1 usa ``freq="h"``; P2 usa intervalos de ``P2_INTERVAL_HOURS`` horas.
 
+    La malla abarca las estaciones con viajes en cualquier momento de la ventana, pero 110
+    abrieron durante ella (87 en el periodo de prueba): antes de abrir, sus ceros no son
+    demanda y, si se quedaran, el entrenamiento incluiría estaciones que solo existen en el
+    futuro. Por eso la columna ``active`` marca la ventana de cada estación, del día de su
+    primer movimiento al día siguiente del último; ``build_p1_table`` y ``build_p2_table``
+    descartan las filas fuera de ella después de calcular los rezagos.
+
     Args:
         trips: Viajes de ``load_data``.
         stations: Estaciones de ``load_data``; solo se cuentan las de la nomenclatura.
@@ -255,7 +283,8 @@ def build_station_period_table(
 
     Returns:
         Una fila por estación y periodo, ordenada por estación y periodo, con ``station_id``,
-        ``period_start``, ``departures``, ``arrivals`` y ``net_flow`` (llegadas − salidas).
+        ``period_start``, ``departures``, ``arrivals``, ``net_flow`` (llegadas − salidas) y
+        ``active`` (``True`` si la estación ya había abierto y no había cerrado).
     """
     known = stations["station_id"]
     departures = (
@@ -291,8 +320,16 @@ def build_station_period_table(
         }
     ).reset_index()
     table["net_flow"] = (table["arrivals"] - table["departures"]).astype("int32")
+
+    # Ventana activa: del día del primer movimiento de la estación al día siguiente del último
+    movements = pd.concat([departures, arrivals]).index.to_frame(index=False)
+    days = movements.groupby("station_id")["period_start"].agg(["min", "max"])
+    opens = table["station_id"].map(days["min"].dt.floor("D"))
+    closes = table["station_id"].map(days["max"].dt.floor("D") + pd.Timedelta(days=1))
+    table["active"] = (table["period_start"] >= opens) & (table["period_start"] < closes)
     logger.info(
-        f"Tabla estación × periodo ({freq}): {len(table):,} filas, {len(active_stations)} estaciones"
+        f"Tabla estación × periodo ({freq}): {len(table):,} filas, {len(active_stations)} "
+        f"estaciones, {table['active'].mean():.1%} de las filas con la estación activa"
     )
     return table
 
@@ -328,23 +365,27 @@ def add_lag_features(
     lags: dict[str, list[int]],
     window: int = ROLLING_WINDOW,
     window_column: str = "departures",
+    horizon: int = 1,
 ) -> pd.DataFrame:
-    """Agrega rezagos y un promedio móvil calculados solo con periodos anteriores.
+    """Agrega rezagos y un promedio móvil calculados solo con periodos cerrados al predecir.
 
     Atiende P1 y P2 (Etapa 3 del pipeline, Tabla 5 de la propuesta). Para cada columna de
     ``lags`` crea ``<columna>_lag_<n>``: el valor de la misma estación ``n`` periodos antes
-    (en P1, horas; en P2, intervalos de 3 horas). Para ``window_column`` crea
-    ``<columna>_mean_<window>``: el promedio de los ``window`` periodos cerrados
-    inmediatamente anteriores, de t − window a t − 1. Los rezagos capturan la inercia
+    (en P1, horas; en P2, intervalos de 3 horas). Para ``window_column`` crea el promedio de
+    los ``window`` periodos que terminan ``horizon`` periodos antes, de
+    t − horizon − window + 1 a t − horizon: ``<columna>_mean_<window>`` si ``horizon`` es 1
+    y ``<columna>_mean_<window>_lag_<horizon>`` si es mayor. Los rezagos capturan la inercia
     inmediata de la estación y su hábito diario y semanal; el promedio móvil suaviza una
     sola hora atípica y muestra si la demanda se acelera o se frena.
 
-    No hay fuga de información del futuro: todas las ventanas terminan en el periodo
-    anterior (t − 1) y nunca incluyen el periodo que se predice. El rezago de un periodo y el
-    promedio móvil sirven para el horizonte de un periodo (el siguiente intervalo, en P2);
-    para el horizonte de 24 horas de P1 (pronóstico al cierre del día anterior), los
-    candidatos deben usar solo los rezagos de 24 horas o más. Las primeras filas de cada
-    estación, sin historial suficiente, quedan como NaN.
+    No hay fuga de información del futuro: ``horizon`` es la distancia, en periodos, entre
+    el último periodo cerrado al emitir la predicción y el periodo que se predice (1 en P2,
+    que pronostica el intervalo siguiente; 24 en P1, que al cierre de cada día pronostica
+    todas las horas del siguiente), y ningún rezago ni ventana puede ser más reciente. En
+    P1, un rezago de 1 h usaría para las 18:00 las 17:00 del mismo día que se pronostica.
+    Además, los periodos fuera de la ventana activa de la estación (``active``) cuentan como
+    desconocidos: los rezagos que caen antes de su apertura y las primeras filas de cada
+    estación, sin historial suficiente, quedan como NaN y no como cero.
 
     Requiere la malla completa y regular de ``build_station_period_table``: así un rezago de
     ``n`` filas dentro de cada estación equivale exactamente a ``n`` periodos.
@@ -352,16 +393,30 @@ def add_lag_features(
     Args:
         table: Tabla de ``build_station_period_table`` (puede llevar más columnas).
         lags: Columnas a rezagar y, para cada una, los rezagos en número de periodos.
-        window: Número de periodos cerrados previos del promedio móvil.
+        window: Número de periodos cerrados del promedio móvil.
         window_column: Columna a la que se aplica el promedio móvil.
+        horizon: Periodos entre el último periodo cerrado al predecir y el que se predice;
+            es el rezago mínimo permitido.
 
     Returns:
         La misma tabla, ordenada por estación y periodo, con las columnas nuevas
         (``float32``).
 
     Raises:
-        ValueError: Si alguna estación no tiene todos los periodos de la malla.
+        ValueError: Si algún rezago es menor que ``horizon`` o si alguna estación no tiene
+            todos los periodos de la malla.
     """
+    too_recent = [
+        f"{column}_lag_{step}"
+        for column, steps in lags.items()
+        for step in steps
+        if step < horizon
+    ]
+    if too_recent:
+        raise ValueError(
+            f"Rezagos menores que el horizonte de {horizon} periodos: {too_recent}. Usarían "
+            "periodos que todavía no ocurren cuando se emite la predicción."
+        )
     n_periods = table["period_start"].nunique()
     irregular = table.groupby("station_id").size() != n_periods
     if irregular.any():
@@ -371,14 +426,18 @@ def add_lag_features(
             "build_station_period_table, antes de filtrar filas."
         )
     table = table.sort_values(["station_id", "period_start"]).reset_index(drop=True)
-    grouped = table.groupby("station_id", sort=False)
+    # Los periodos con la estación inactiva son desconocidos (NaN), no demanda cero
+    history = table[list(dict.fromkeys([*lags, window_column]))].astype("float32")
+    history.loc[~table["active"]] = np.nan
+    grouped = history.groupby(table["station_id"], sort=False)
     new_columns = {}
     for column, steps in lags.items():
         for step in steps:
             new_columns[f"{column}_lag_{step}"] = grouped[column].shift(step).astype("float32")
-    new_columns[f"{window_column}_mean_{window}"] = (
+    suffix = f"_lag_{horizon}" if horizon > 1 else ""
+    new_columns[f"{window_column}_mean_{window}{suffix}"] = (
         grouped[window_column]
-        .transform(lambda values: values.shift(1).rolling(window).mean())
+        .transform(lambda values: values.shift(horizon).rolling(window).mean())
         .astype("float32")
     )
     logger.info(f"Variables históricas: {', '.join(new_columns)}")
@@ -393,23 +452,28 @@ def build_p1_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
 
     Atiende P1 (Tablas 4 y 5 de la propuesta): la variable objetivo ``departures`` es el
     número de viajes que salen de la estación en cada hora, la demanda que el operador
-    necesita anticipar para planear la flota. Lleva además las llegadas y el flujo neto de la
-    hora, la capacidad de la estación, las variables de calendario y las históricas: salidas
-    1 h, 24 h y 7 días antes (``LAG_HOURS``), llegadas y flujo neto 1 h y 24 h antes
-    (``FLOW_LAG_HOURS``) y el promedio móvil de salidas de las ``ROLLING_WINDOW`` horas
-    cerradas previas.
+    necesita anticipar para planear la flota. Al cierre de cada día se pronostican todas las
+    horas del siguiente (``P1_HORIZON_HOURS`` = 24), así que las variables históricas solo
+    usan horas cerradas al menos 24 h antes: salidas 24 h y 7 días antes
+    (``P1_LAG_HOURS``), llegadas y flujo neto 24 h antes (``P1_FLOW_LAG_HOURS``) y el
+    promedio de salidas de las ``ROLLING_WINDOW`` horas que terminan a la misma hora del día
+    anterior. Lleva además la capacidad de la estación y las variables de calendario.
+
+    La tabla conserva las llegadas y el flujo neto de la propia hora para análisis, pero no
+    son variables de entrada: el modelo solo recibe ``P1_FEATURES``.
 
     Los rezagos se calculan sobre la malla horaria completa y solo después se excluyen las
     horas de ``NO_SERVICE_HOURS`` (de 1:00 a 4:59), en las que el sistema no presta
-    bicicletas: ahí la demanda es 0 por regla y no por comportamiento de los usuarios, pero
-    siguen contando como historial (a las 5:00, el rezago de 1 h es la hora de las 4:00).
+    bicicletas (ahí la demanda es 0 por regla y no por comportamiento de los usuarios, pero
+    siguen contando como historial), y las horas fuera de la ventana activa de cada
+    estación, antes de que abriera o después de que cerrara.
 
     Args:
         trips: Viajes de ``load_data``.
         stations: Estaciones de ``load_data``.
 
     Returns:
-        Una fila por estación y hora de servicio, con ``departures``, ``arrivals``,
+        Una fila por estación activa y hora de servicio, con ``departures``, ``arrivals``,
         ``net_flow``, ``capacity``, las variables de calendario y las históricas.
     """
     table = build_station_period_table(trips, stations, freq="h")
@@ -417,11 +481,17 @@ def build_p1_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     table = table.merge(stations[["station_id", "capacity"]], on="station_id", how="left")
     table = add_lag_features(
         table,
-        {"departures": LAG_HOURS, "arrivals": FLOW_LAG_HOURS, "net_flow": FLOW_LAG_HOURS},
+        {
+            "departures": P1_LAG_HOURS,
+            "arrivals": P1_FLOW_LAG_HOURS,
+            "net_flow": P1_FLOW_LAG_HOURS,
+        },
         window=ROLLING_WINDOW,
+        horizon=P1_HORIZON_HOURS,
     )
-    table = table.loc[~table["period_start"].dt.hour.isin(NO_SERVICE_HOURS)]
-    logger.info(f"Tabla P1: {len(table):,} filas de estación × hora de servicio")
+    in_service = ~table["period_start"].dt.hour.isin(NO_SERVICE_HOURS)
+    table = table.loc[table["active"] & in_service].drop(columns="active")
+    logger.info(f"Tabla P1: {len(table):,} filas de estación activa × hora de servicio")
     return table.reset_index(drop=True)
 
 
@@ -457,6 +527,28 @@ def _hours_to_intervals(hours: int) -> int:
     return max(1, hours // P2_INTERVAL_HOURS)
 
 
+# Rezagos de P2 en intervalos: salidas 1, 8 y 56 intervalos antes; llegadas y flujo neto 1 y 8
+P2_DEPARTURE_LAGS = [_hours_to_intervals(hours) for hours in LAG_HOURS]
+P2_FLOW_LAGS = [_hours_to_intervals(hours) for hours in FLOW_LAG_HOURS]
+
+# Variables de entrada de P2: solo lo que se conoce al cierre del intervalo anterior. Quedan
+# fuera la variable objetivo y los movimientos del propio intervalo (``risk``, ``departures``,
+# ``arrivals`` y ``net_flow``): la clase de riesgo se calcula con el flujo neto del intervalo.
+# ``station_id``, ``interval_of_day`` e ``is_weekend`` son los grupos del baseline.
+P2_TARGET = "risk"
+P2_FEATURES = [
+    "station_id",
+    "interval_of_day",
+    "day_of_week",
+    "is_weekend",
+    "capacity",
+    *[f"departures_lag_{step}" for step in P2_DEPARTURE_LAGS],
+    *[f"arrivals_lag_{step}" for step in P2_FLOW_LAGS],
+    *[f"net_flow_lag_{step}" for step in P2_FLOW_LAGS],
+    f"departures_mean_{ROLLING_WINDOW}",
+]
+
+
 def build_p2_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     """Construye la tabla de P2: salidas, llegadas y riesgo por estación e intervalo de 3 h.
 
@@ -470,28 +562,29 @@ def build_p2_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     56 (7 días) intervalos antes, llegadas y flujo neto 1 y 8 intervalos antes, y el promedio
     móvil de salidas de los ``ROLLING_WINDOW`` intervalos cerrados previos. Todas usan solo
     intervalos anteriores al que se predice, como exige el horizonte de P2 (el intervalo
-    siguiente, con los viajes ocurridos hasta el cierre del actual).
+    siguiente, con los viajes ocurridos hasta el cierre del actual). El modelo solo recibe
+    ``P2_FEATURES``. Después de calcular los rezagos se excluyen los intervalos fuera de la
+    ventana activa de cada estación, cuyos ceros inflarían la clase ``"sin_riesgo"``.
 
     Args:
         trips: Viajes de ``load_data``.
         stations: Estaciones de ``load_data``.
 
     Returns:
-        Una fila por estación e intervalo, con ``departures``, ``arrivals``, ``net_flow``,
-        ``capacity``, ``risk``, las variables de calendario y las históricas.
+        Una fila por estación activa e intervalo, con ``departures``, ``arrivals``,
+        ``net_flow``, ``capacity``, ``risk``, las variables de calendario y las históricas.
     """
     with_capacity = stations.loc[stations["capacity"] > 0, ["station_id", "capacity"]]
     table = build_station_period_table(trips, with_capacity, freq=f"{P2_INTERVAL_HOURS}h")
     table = add_calendar_features(table).merge(with_capacity, on="station_id")
     table["interval_of_day"] = (table["hour_of_day"] // P2_INTERVAL_HOURS).astype("int8")
     table["risk"] = label_risk(table["net_flow"], table["capacity"])
-    departure_lags = [_hours_to_intervals(hours) for hours in LAG_HOURS]
-    flow_lags = [_hours_to_intervals(hours) for hours in FLOW_LAG_HOURS]
     table = add_lag_features(
         table,
-        {"departures": departure_lags, "arrivals": flow_lags, "net_flow": flow_lags},
+        {"departures": P2_DEPARTURE_LAGS, "arrivals": P2_FLOW_LAGS, "net_flow": P2_FLOW_LAGS},
         window=ROLLING_WINDOW,
     )
+    table = table.loc[table["active"]].drop(columns="active").reset_index(drop=True)
     shares = table["risk"].value_counts(normalize=True).round(4).to_dict()
     logger.info(f"Tabla P2: {len(table):,} filas; clases: {shares}")
     return table

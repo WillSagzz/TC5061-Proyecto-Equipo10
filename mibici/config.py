@@ -106,10 +106,18 @@ except (KeyError, OSError, ImportError):  # contenedores o CI sin usuario conoci
     MLFLOW_RUN_USER = "desconocido"
 
 # P1 y P2: variables históricas de la Tabla 5 de la propuesta (features.py). Se expresan en
-# horas; P2 las convierte a intervalos (1 intervalo, 24 h = 8 intervalos y 7 días = 56).
+# horas; P2 las convierte a intervalos (1 intervalo, 24 h = 8 intervalos y 7 días = 56) y las
+# usa todas, porque su horizonte es de un intervalo. P1 solo usa las de P1_LAG_HOURS.
 LAG_HOURS = [1, 24, 24 * 7]  # salidas registradas 1 h, 24 h y 7 días antes
 FLOW_LAG_HOURS = [1, 24]  # llegadas y flujo neto 1 h y 24 h antes
 ROLLING_WINDOW = 3  # promedio móvil de salidas: periodos cerrados previos al que se predice
+
+# P1: horizonte de 24 h (al cierre de cada día se pronostica hora por hora el día siguiente).
+# Solo sirven los rezagos de al menos 24 h: el de 1 h de las 18:00 serían las 17:00 del mismo
+# día que se pronostica, que aún no ocurren. El promedio móvil se desplaza el mismo horizonte.
+P1_HORIZON_HOURS = 24
+P1_LAG_HOURS = [h for h in LAG_HOURS if h >= P1_HORIZON_HOURS]  # 24 h y 7 días
+P1_FLOW_LAG_HOURS = [h for h in FLOW_LAG_HOURS if h >= P1_HORIZON_HOURS]  # 24 h
 
 # P2: riesgo de que una estación se vacíe o se llene
 P2_INTERVAL_HOURS = 3  # 8 intervalos por día
