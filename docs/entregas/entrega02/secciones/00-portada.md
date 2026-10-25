@@ -24,8 +24,7 @@
 </tbody>
 </table>
 
-<!-- TODO: fecha de entrega (la actividad vence el 25 de octubre de 2026) -->
-<div class="fecha"><strong>Fecha:</strong> TODO de octubre de 2026</div>
+<div class="fecha"><strong>Fecha:</strong> 25 de octubre de 2026</div>
 <div class="repositorio">Repositorio: <a href="https://github.com/WillSagzz/TC5061-Proyecto-Equipo10">github.com/WillSagzz/TC5061-Proyecto-Equipo10</a></div>
 
 </div>
