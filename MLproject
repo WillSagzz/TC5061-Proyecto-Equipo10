@@ -1,0 +1,37 @@
+name: mibici-equipo10
+
+# Entorno con las mismas versiones fijas de requirements.txt. Para usar el entorno virtual ya
+# activado en lugar de crear uno nuevo, agrega --env-manager local a `mlflow run`.
+python_env: python_env.yaml
+
+entry_points:
+  # Descarga, verifica contra datapackage.json, limpia y escribe los Parquet (make data).
+  ingest:
+    command: "python -m mibici.dataset"
+
+  # Entrena un modelo y lo registra en el experimento mibici-equipo10.
+  # model: baseline o un candidato de mibici/modeling/candidates.py.
+  # Los hiperparámetros vacíos toman su valor de MODEL_DEFAULTS en mibici/config.py.
+  train:
+    parameters:
+      question: {type: string, default: p1}
+      model: {type: string, default: baseline}
+      alpha: {type: string, default: ""}
+      c: {type: string, default: ""}
+      learning_rate: {type: string, default: ""}
+      max_iter: {type: string, default: ""}
+      max_leaf_nodes: {type: string, default: ""}
+      n_clusters: {type: string, default: ""}
+    command: >-
+      python -m mibici.modeling.train run
+      --question {question} --model {model}
+      --alpha {alpha} --c {c} --learning-rate {learning_rate} --max-iter {max_iter}
+      --max-leaf-nodes {max_leaf_nodes} --n-clusters {n_clusters}
+
+  # Búsqueda de hiperparámetros con nested runs: una corrida padre y una hija por combinación
+  # de la rejilla SEARCH_GRIDS de mibici/config.py.
+  search:
+    parameters:
+      question: {type: string, default: p1}
+      model: {type: string, default: hgb}
+    command: "python -m mibici.modeling.train search --question {question} --model {model}"

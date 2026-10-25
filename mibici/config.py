@@ -133,3 +133,23 @@ DAY_PERIODS = {
 }
 P3_N_CLUSTERS = 4  # número de grupos del baseline
 P3_K_VALUES = list(range(2, 9))  # valores de k que se comparan: de 2 a 8
+
+# Modelos candidatos (modeling/candidates.py). Hiperparámetros por defecto de cada modelo: se
+# usan cuando `mlflow run ... -e train` no recibe ese hiperparámetro con -P.
+MODEL_DEFAULTS = {
+    "ridge": {"alpha": 1.0},
+    "logreg": {"c": 1.0, "max_iter": 300},
+    "hgb": {"learning_rate": 0.1, "max_iter": 200, "max_leaf_nodes": 31},
+    "kmeans": {"n_clusters": P3_N_CLUSTERS},
+    "agglomerative": {"n_clusters": P3_N_CLUSTERS},
+    "gmm": {"n_clusters": P3_N_CLUSTERS},
+}
+
+# Búsquedas de hiperparámetros (`mlflow run ... -e search`): una corrida padre por búsqueda y
+# una corrida hija por combinación. Se elige la combinación con la mejor métrica de validación
+# (P1: val_mae; P2: val_f1_macro) o, en P3, con la mejor silueta.
+SEARCH_GRIDS = {
+    "p1": {"hgb": {"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]}},
+    "p2": {"hgb": {"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63]}},
+    "p3": {"kmeans": {"n_clusters": P3_K_VALUES}, "gmm": {"n_clusters": P3_K_VALUES}},
+}
