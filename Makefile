@@ -3,8 +3,14 @@
 #################################################################################
 
 PROJECT_NAME = TC5061-Proyecto-Equipo10
-PYTHON_VERSION = 3.10
+PYTHON_VERSION = 3.12
 PYTHON_INTERPRETER = python
+
+# Todas las corridas se lanzan desde el MLflow Project (MLproject). --env-manager local usa el
+# entorno activado (el gestor por defecto, virtualenv, necesita pyenv para instalar la versión
+# de Python de python_env.yaml). El experimento de cada run lo elige el proyecto a partir de
+# la pregunta (mibici/experiments.py); el servidor y las credenciales salen del .env.
+MLFLOW_RUN = mlflow run . --env-manager local
 
 # Servidor MLflow compartido en Azure (infra/). Solo lo usa quien administra la suscripción.
 AZ_RG = rg-mibici-equipo10
@@ -66,10 +72,10 @@ create_environment:
 #################################################################################
 
 
-## Rebuild the data version described in datapackage.json: download, verify hashes, clean, write Parquet
+## Rebuild the data version described in datapackage.json through the MLflow Project (entry point ingest)
 .PHONY: data
 data:
-	$(PYTHON_INTERPRETER) -m mibici.dataset
+	$(MLFLOW_RUN) -e ingest
 
 
 ## Freeze a new data version and write datapackage.json (optional: VERSION=2026-10 START=... END=...)
@@ -84,11 +90,28 @@ validate:
 	$(PYTHON_INTERPRETER) -m mibici.datapackage validate
 
 
-## Train the baselines of P1, P2 and P3 and log them to MLflow
-.PHONY: train
-train:
-	$(PYTHON_INTERPRETER) -m mibici.modeling.train all
+## Train the baseline of each question through the MLflow Project (one run per question)
+.PHONY: baselines
+baselines:
+	$(MLFLOW_RUN) -e train -P question=p1
+	$(MLFLOW_RUN) -e train -P question=p2
+	$(MLFLOW_RUN) -e train -P question=p3
 
+## Train the chosen model of each question (today, the baselines; the README lists the commands)
+.PHONY: train
+train: baselines
+
+## Train one model: make run Q=p1 M=rf P="n_estimators=300 max_depth=8" (M defaults to baseline)
+.PHONY: run
+run:
+	@test -n "$(Q)" || { echo 'Uso: make run Q=p1 [M=rf] [P="n_estimators=300 max_depth=8"]'; exit 1; }
+	$(MLFLOW_RUN) -e train -P question=$(Q) -P model=$(or $(M),baseline) $(foreach p,$(P),-P $(p))
+
+
+## Open the MLflow UI on the local SQLite database (http://127.0.0.1:5000)
+.PHONY: mlflow-ui
+mlflow-ui:
+	mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000
 
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01

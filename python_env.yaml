@@ -1,0 +1,8 @@
+# Entorno del MLflow Project (MLproject). Las dependencias se leen de requirements.txt para no
+# repetir versiones: ese archivo es la única fuente de verdad e instala también el paquete
+# `mibici` en modo editable, que registra el proveedor de experimentos (pyproject.toml).
+python: "3.12"
+build_dependencies:
+  - pip
+dependencies:
+  - -r requirements.txt
