@@ -67,7 +67,9 @@ STATION_COLUMNS = {
 # (datapackage.py), se versiona en Git y `make data` (dataset.py) verifica cada archivo contra
 # él antes de procesarlo. Las rutas de los recursos son relativas a la raíz del repositorio.
 DATAPACKAGE_PATH = PROJ_ROOT / "datapackage.json"
-RAW_VALIDATION_ROWS = 10_000  # filas de cada CSV que `make data` valida contra el esquema
+RAW_VALIDATION_ROWS = (
+    10_000  # filas de cada CSV que `make data` valida contra el esquema
+)
 
 # Limpieza de viajes
 MIN_TRIP_MINUTES = 1  # retiros y devoluciones en la misma estación por debajo de esto
@@ -96,7 +98,9 @@ TEAM = "equipo10"
 MLFLOW_EXPERIMENT_NAME = f"mibici-{TEAM}"
 # Por defecto, una base local en la raíz del proyecto (excluida de Git). Para usar un
 # servidor de MLflow, definir MLFLOW_TRACKING_URI en el archivo .env.
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
+MLFLOW_TRACKING_URI = os.getenv(
+    "MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}"
+)
 MLFLOW_ARTIFACTS_DIR = PROJ_ROOT / "mlartifacts"
 # Quién ejecutó el run: el usuario del servidor compartido (MLFLOW_TRACKING_USERNAME en .env) o,
 # en modo local, el usuario del sistema operativo. train.py lo registra como etiqueta `usuario`.
@@ -110,7 +114,9 @@ except (KeyError, OSError, ImportError):  # contenedores o CI sin usuario conoci
 # usa todas, porque su horizonte es de un intervalo. P1 solo usa las de P1_LAG_HOURS.
 LAG_HOURS = [1, 24, 24 * 7]  # salidas registradas 1 h, 24 h y 7 días antes
 FLOW_LAG_HOURS = [1, 24]  # llegadas y flujo neto 1 h y 24 h antes
-ROLLING_WINDOW = 3  # promedio móvil de salidas: periodos cerrados previos al que se predice
+ROLLING_WINDOW = (
+    3  # promedio móvil de salidas: periodos cerrados previos al que se predice
+)
 
 # P1: horizonte de 24 h (al cierre de cada día se pronostica hora por hora el día siguiente).
 # Solo sirven los rezagos de al menos 24 h: el de 1 h de las 18:00 serían las 17:00 del mismo
@@ -133,3 +139,23 @@ DAY_PERIODS = {
 }
 P3_N_CLUSTERS = 4  # número de grupos del baseline
 P3_K_VALUES = list(range(2, 9))  # valores de k que se comparan: de 2 a 8
+
+# Modelos candidatos (modeling/candidates.py). Hiperparámetros por defecto de cada modelo: se
+# usan cuando `mlflow run ... -e train` no recibe ese hiperparámetro con -P.
+MODEL_DEFAULTS = {
+    "ridge": {"alpha": 1.0},
+    "logreg": {"c": 1.0, "max_iter": 300},
+    "hgb": {"learning_rate": 0.1, "max_iter": 200, "max_leaf_nodes": 31},
+    "kmeans": {"n_clusters": P3_N_CLUSTERS},
+    "agglomerative": {"n_clusters": P3_N_CLUSTERS},
+    "gmm": {"n_clusters": P3_N_CLUSTERS},
+}
+
+# Búsquedas de hiperparámetros (`mlflow run ... -e search`): una corrida padre por búsqueda y
+# una corrida hija por combinación. Se elige la combinación con la mejor métrica de validación
+# (P1: val_mae; P2: val_f1_macro) o, en P3, con la mejor silueta.
+SEARCH_GRIDS = {
+    "p1": {"hgb": {"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]}},
+    "p2": {"hgb": {"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63]}},
+    "p3": {"kmeans": {"n_clusters": P3_K_VALUES}, "gmm": {"n_clusters": P3_K_VALUES}},
+}
