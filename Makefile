@@ -94,9 +94,12 @@ baselines:
 	$(MLFLOW_RUN) -e train -P question=p2
 	$(MLFLOW_RUN) -e train -P question=p3
 
-## Train the chosen model of each question (today, the baselines; the README lists the commands)
+## Train the chosen model of each question: the version registered as champion (README, Model Registry)
 .PHONY: train
-train: baselines
+train:
+	$(MLFLOW_RUN) -e train -P question=p1 -P model=hgb_poisson -P learning_rate=0.1 -P max_leaf_nodes=127
+	$(MLFLOW_RUN) -e train -P question=p2 -P model=hgb_threshold -P learning_rate=0.05 -P max_leaf_nodes=63
+	$(MLFLOW_RUN) -e train -P question=p3
 
 ## Train one model: make run Q=p1 M=ridge P="alpha=10" (M defaults to baseline; models in candidates.py)
 .PHONY: run
