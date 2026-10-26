@@ -397,7 +397,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make data` | `mlflow run . -e ingest --env-manager local` (ejecuta `python -m mibici.dataset`) | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. Queda registrada como *run* del experimento `mibici-ingesta`. |
 | `make snapshot VERSION=2026-10` | `python -m mibici.datapackage snapshot --version 2026-10` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
-| `make train` | `mlflow run . -e train -P question=p1` (y `p2`, `p3`) | **Modelo elegido de cada pregunta.** Hoy son los *baselines* (ver [Reproducir con el MLflow Project](#reproducir-con-el-mlflow-project)): construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
+| `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
 | `make run Q=p1 M=ridge P="alpha=10"` | `mlflow run . -e train -P question=p1 -P model=ridge -P alpha=10` | **Un modelo candidato.** `M` es un modelo de `candidates.py` y `P` sus hiperparámetros; sin `M` entrena el *baseline*. |
 | `make search Q=p1 M=hgb` | `mlflow run . -e search -P question=p1 -P model=hgb` | **Búsqueda de hiperparámetros** con *nested runs*: una corrida padre y una hija por combinación de `SEARCH_GRIDS` en `config.py`. |
@@ -436,15 +436,19 @@ Desde un clon limpio, con el entorno instalado, la ingesta y el modelo elegido d
 pregunta se reproducen con:
 
 ```bash
-mlflow run . -e ingest --env-manager local                    # ingesta (run en mibici-ingesta)
-mlflow run . -e train -P question=p1 --env-manager local      # modelo elegido de P1
-mlflow run . -e train -P question=p2 --env-manager local      # modelo elegido de P2
-mlflow run . -e train -P question=p3 --env-manager local      # modelo elegido de P3
+# ingesta (run en mibici-ingesta)
+mlflow run . -e ingest --env-manager local
+# P1: HistGradientBoosting con pérdida de Poisson
+mlflow run . -e train --env-manager local -P question=p1 -P model=hgb_poisson -P learning_rate=0.1 -P max_leaf_nodes=127
+# P2: HistGradientBoosting con pesos por clase y umbral de alerta elegido con validación
+mlflow run . -e train --env-manager local -P question=p2 -P model=hgb_threshold -P learning_rate=0.05 -P max_leaf_nodes=63
+# P3: el baseline, StandardScaler + K-Means con k = 4
+mlflow run . -e train --env-manager local -P question=p3
 ```
 
-`make data` y `make train` ejecutan exactamente esos comandos. Hoy el modelo elegido de cada
-pregunta es el *baseline* de la propuesta; cuando se comparen los candidatos, las tres últimas
-líneas cambiarán por el comando del modelo elegido.
+`make data` y `make train` ejecutan exactamente esos comandos. Son los modelos registrados como
+`champion` en el [Model Registry](#model-registry); la comparación contra el *baseline* y la
+justificación de cada elección están en el reporte de la entrega 02.
 
 Sobre `--env-manager local`: ejecuta el punto de entrada en el entorno que ya activaste, que se
 instaló con el mismo `requirements.txt`. Sin esa opción, `mlflow run` toma `python_env.yaml`,
@@ -617,6 +621,50 @@ Cómo se conecta un integrante:
 
 Sin `.env`, todo sigue funcionando en modo local, que es el modo para iterar y depurar.
 
+## Model Registry
+
+El modelo elegido de cada pregunta está registrado en el Model Registry del servidor
+compartido, con un nombre por pregunta:
+
+| Pregunta | Modelo registrado | En producción (`@champion`) | Corrida de origen |
+|---|---|---|---|
+| P1 | `mibici-equipo10-p1-demanda` | `hgb_poisson` (`learning_rate=0.1`, `max_leaf_nodes=127`) | `P1-candidato-hgb_poisson-...` en `mibici-p1-demanda` |
+| P2 | `mibici-equipo10-p2-riesgo` | `hgb_threshold` (`learning_rate=0.05`, `max_leaf_nodes=63`; umbrales 0.90 para `vaciarse` y 0.85 para `llenarse`, guardados dentro del modelo) | `P2-candidato-hgb_threshold-...` en `mibici-p2-riesgo` |
+| P3 | `mibici-equipo10-p3-grupos` | El *baseline*: `StandardScaler` + K-Means con k = 4; `@challenger`: K-Means con k = 5 | `P3-baseline-kmeans-k4` en `mibici-p3-perfiles` |
+
+**Ciclo de vida con alias.** La versión en producción de cada modelo lleva el alias
+`champion`, y quien lo usa lo carga por nombre y alias, sin conocer el número de versión:
+`models:/mibici-equipo10-p1-demanda@champion`. El alias `challenger` (opcional) marca la
+siguiente mejor versión. Se usan alias y no las etapas clásicas (`Staging`, `Production`)
+porque MLflow las marcó como obsoletas desde la versión 2.9 y recomienda alias: llevar una
+versión a producción es mover el alias `champion` en un solo paso, sin copiar el modelo, y
+una versión puede tener varios alias a la vez.
+
+**Linaje.** Cada versión apunta a su corrida de origen (*Source run*) y, por ella, a su
+experimento, parámetros, métricas y artefactos. Además lleva las etiquetas `git_commit`
+(el commit con que se entrenó) y `version_datos` (la versión de `datapackage.json`), y cada
+modelo registrado tiene una descripción con la pregunta, el modelo, el periodo de
+entrenamiento, sus métricas y su usuario.
+
+**Registrar una versión nueva** (desde la interfaz de MLflow):
+
+1. En la corrida candidata, abrir *Logged models* → `modelo` → **Register model** y elegir el
+   nombre de la pregunta (solo la primera vez se usa *Create New Model*).
+2. En la versión nueva, agregar las etiquetas `git_commit` (copiada de las etiquetas de la
+   corrida) y `version_datos`.
+3. Para llevarla a producción, mover el alias `champion` a esa versión; la anterior puede
+   quedar como `challenger`.
+
+**Comprobar que los modelos en producción se cargan** por su nombre y alias:
+
+```bash
+python -c "import os; os.environ['MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR'] = 'false'; import mlflow; from mibici.config import MLFLOW_TRACKING_URI; mlflow.set_tracking_uri(MLFLOW_TRACKING_URI); [print(n, '->', type(mlflow.sklearn.load_model(f'models:/{n}@champion')).__name__) for n in ['mibici-equipo10-p1-demanda', 'mibici-equipo10-p2-riesgo', 'mibici-equipo10-p3-grupos']]"
+```
+
+Debe imprimir `HistGradientBoostingRegressor`, `ThresholdClassifier` y `Pipeline`. Necesita el
+`.env` del servidor y el paquete `mibici` instalado: el modelo de P2 usa la clase
+`ThresholdClassifier` de `mibici/modeling/thresholds.py`.
+
 ## Estructura del proyecto
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
@@ -685,6 +733,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 | MLflow Tracking | Registrar todo lo necesario para reproducir el *run*. | Parámetros `version_datos`, fechas de la partición, `semilla`, modelo e hiperparámetros, tomados de `config.py` y de `datapackage.json`; el *dataset* como entrada del *run*. | Parámetros y pestaña *Datasets* del *run*. |
 | MLflow Tracking | Ligar cada *run* con el código, la pregunta y quien lo ejecutó. | Etiquetas `git_commit`, `pregunta`, `equipo`, `usuario` y `mlflow.user` (usuario del servidor), `familia_modelo` y `etapa`. | Etiquetas del *run*. |
 | MLflow Tracking | Métricas con el conjunto en el nombre. | `test_mae`, `test_recall_vaciarse`, `train_silhouette`, etc. | Métricas del *run*. |
+| MLflow Model Registry | Un modelo registrado por pregunta, con su versión en producción y su linaje. | `mibici-equipo10-p1-demanda`, `-p2-riesgo` y `-p3-grupos`, con descripción, alias `champion` (y `challenger` en P3) y etiquetas `git_commit` y `version_datos` en cada versión. | Pestaña *Models* de la interfaz y el comando de [Model Registry](#model-registry). |
 | MLflow Tracking | Sin credenciales ni datos personales. | La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento`; `.env` está fuera de Git. | Interfaz de MLflow y código. |
 | Estructura y código | *Notebooks* solo para exploración, con la convención de la plantilla. | La lógica final vive en `mibici/`; los *notebooks* se nombran `numero.version-iniciales-descripcion.ipynb`. | Carpeta `notebooks/`. |
 | Estructura y código | Configuración en un solo lugar. | Rutas, fechas y cortes, semilla, contrato de datos, reglas de limpieza, umbral e intervalo de P2, periodos y grupos de P3 y nombre del experimento en `config.py`; prohibido repetirlos. | `config.py` y revisión de PR. |
