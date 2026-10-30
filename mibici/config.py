@@ -178,3 +178,15 @@ SEARCH_GRIDS = {
 # Umbrales de alerta de P2 (modeling/thresholds.py): probabilidad mínima para avisar
 # `vaciarse` o `llenarse`. Se prueban de 0.05 a 0.95 y se elige con validación.
 P2_THRESHOLD_GRID = [round(0.05 * step, 2) for step in range(1, 20)]
+
+# Validación de datos con DeepChecks (validation.py)
+DEEPCHECKS_REPORTS_DIR = REPORTS_DIR / "deepchecks"
+DEEPCHECKS_SAMPLE_SIZE = 50_000  # muestra determinista máxima por partición para velocidad
+DEEPCHECKS_MAX_NULL_RATIO = 0.10  # proporción máxima permitida de NaN en columnas con rezagos
+DEEPCHECKS_MAX_DRIFT_PSI = 0.30  # umbral máximo de PSI para drift de covariables
+DEEPCHECKS_MAX_DRIFT_EMD = 0.25  # umbral máximo de Earth Mover's Distance para drift numérico
+DEEPCHECKS_MAX_LABEL_DRIFT = 0.25  # umbral máximo de drift en la variable objetivo
+
+P1_CATEGORICAL_FEATURES = ["station_id", "hour_of_day", "day_of_week", "is_weekend"]
+P2_CATEGORICAL_FEATURES = ["station_id", "interval_of_day", "day_of_week", "is_weekend"]
+P3_CATEGORICAL_FEATURES: list[str] = []

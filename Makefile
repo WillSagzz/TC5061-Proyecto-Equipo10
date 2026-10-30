@@ -86,6 +86,16 @@ snapshot:
 validate:
 	$(PYTHON_INTERPRETER) -m mibici.datapackage validate
 
+## Validate modeling tables (P1, P2, P3) with DeepChecks
+.PHONY: check-data
+check-data:
+	$(PYTHON_INTERPRETER) -m mibici.validation $(if $(Q),--question $(Q)) $(if $(SYNTHETIC),--synthetic)
+
+
+## Run automated unit and data validation tests with PyTest
+.PHONY: test
+test:
+	$(PYTHON_INTERPRETER) -m pytest -v
 
 ## Train the baseline of each question through the MLflow Project (one run per question)
 .PHONY: baselines

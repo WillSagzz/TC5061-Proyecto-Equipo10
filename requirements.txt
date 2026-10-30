@@ -30,3 +30,7 @@ ruff==0.16.8
 markdown-it-py==4.2.0
 PyYAML==6.0.3
 PyMuPDF==1.28.2
+
+# Pruebas y validación de calidad
+pytest==9.2.0
+deepchecks==0.19.1
