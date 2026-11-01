@@ -761,6 +761,26 @@ make check-data SYNTHETIC=1                            # o: python -m mibici.val
 
 Los reportes interactivos se guardan en `reports/deepchecks/` (`p1_integrity.html`, `p1_train_test_drift.html`, `p2_integrity.html`, `p2_train_test_drift.html` y `p3_integrity.html`).
 
+### Pruebas unitarias
+
+Las pruebas viven en `tests/` y usan datos inventados pequeños, nunca los datos reales, así
+que corren sin descargar nada. Cada función clave tiene un caso normal y un caso límite por
+cada una de sus reglas.
+
+| Archivo | Qué prueba | Caso normal | Casos límite |
+|---|---|---|---|
+| `test_dataset.py` | `clean_trips` | Conserva los viajes válidos, incluidos los que están justo en el borde (salida a las 5:00, 24 h exactas) | Quita uno por uno los 9 tipos de viaje inválido: fecha ilegible, duración negativa o mayor a 24 h, menos de 1 min en la misma estación, salida a la 1:00 o a las 4:59, origen o destino fuera de la nomenclatura y duplicados |
+| `test_features.py` | `build_station_period_table` | Cuenta salidas y llegadas por hora (P1), redondeando hacia abajo | Cuenta por intervalos de 3 horas (P2), deja en 0 las horas sin viajes y marca inactiva una estación antes de abrir |
+| `test_features.py` | `label_risk` | Etiqueta `vaciarse`, `llenarse` y `sin_riesgo` con el umbral del 40 % de la capacidad | El límite exacto cuenta como riesgo y el umbral cambia con la capacidad |
+| `test_modeling.py` | Reproducibilidad del entrenamiento | Entrenar dos veces el modelo elegido de P1 con la misma semilla da predicciones idénticas | — |
+| `test_data_validation.py` | Suites de DeepChecks de `validation.py` | Las tablas de P1, P2 y P3 pasan las validaciones | Detecta columnas faltantes, datos dañados y fugas temporales |
+
+Para correr un solo archivo:
+
+```bash
+python -m pytest tests/test_dataset.py -v
+```
+
 ## Buenas prácticas y dónde se verifican
 
 | Ámbito | Práctica | Cómo la aplica el equipo | Dónde se verifica |
