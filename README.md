@@ -397,6 +397,8 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make data` | `mlflow run . -e ingest --env-manager local` (ejecuta `python -m mibici.dataset`) | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. Queda registrada como *run* del experimento `mibici-ingesta`. |
 | `make snapshot VERSION=2026-10` | `python -m mibici.datapackage snapshot --version 2026-10` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
+| `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
+| `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
 | `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
 | `make run Q=p1 M=ridge P="alpha=10"` | `mlflow run . -e train -P question=p1 -P model=ridge -P alpha=10` | **Un modelo candidato.** `M` es un modelo de `candidates.py` y `P` sus hiperparámetros; sin `M` entrena el *baseline*. |
@@ -708,6 +710,10 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports               <- Análisis generados (HTML, PDF, etc.)
 │   └── figures           <- Gráficas y figuras para los reportes
 │
+├── tests                 <- Pruebas automatizadas con PyTest y DeepChecks
+│   ├── __init__.py
+│   └── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
+│
 └── mibici                <- Código fuente del proyecto
     ├── __init__.py       <- Hace de `mibici` un paquete de Python
     ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
@@ -716,6 +722,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
+    ├── validation.py     <- Validación de integridad y drift tabular con DeepChecks (P1, P2 y P3)
     └── modeling
         ├── __init__.py
         ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
@@ -724,6 +731,35 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
         ├── train.py      <- Puntos de entrada `train` y `search`: entrenamiento, búsqueda y registro del run en MLflow
         └── predict.py    <- Inferencia con modelos entrenados
 ```
+
+## Validación de calidad de datos y pruebas automatizadas
+
+El proyecto implementa una estrategia de validación en dos capas para no duplicar controles:
+
+1. **Capa de ingesta y almacenamiento (`datapackage.py`, `dataset.py` y `features.py`):**
+   - `frictionless` verifica el tamaño en bytes, el hash SHA-256, la codificación y el esquema de los 25 CSV crudos y de los dos Parquet procesados contra [`datapackage.json`](datapackage.json) (`make data` y `make validate`).
+   - `clean_trips` elimina viajes con fechas inválidas, duraciones fuera de `[0, 1440]` minutos, retiros/devoluciones menores a 1 minuto en la misma estación, horas sin servicio (`1:00` a `4:59`), estaciones fuera de catálogo y duplicados por `viaje_id`, descartando además las columnas con datos personales (`Usuario_Id`, `Genero`, `Año_de_nacimiento`).
+   - `validate_contract`, `split_by_date` y `add_lag_features` garantizan en `features.py` los tipos de datos del contrato, la partición cronológica no vacía y que ningún rezago sea menor al horizonte de predicción (`24 h` en P1; `1 intervalo` en P2).
+
+2. **Capa de tablas de modelado y *drift* con DeepChecks (`mibici/validation.py`):**
+   Audita las tablas finales (`P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES`) que entran a los modelos:
+   - **Suite de Integridad (`build_integrity_suite`):** `IsSingleValue` (ausencia de columnas constantes), `PercentOfNulls` ($\le 10\%$ en P1/P2 por el arranque de rezagos y $0\%$ en P3), `DataDuplicates`, `MixedNulls`, `MixedDataTypes`, `FeatureFeatureCorrelation` y `FeatureLabelCorrelation` (PPS $< 0.90$ para descartar fugas predictivas).
+   - **Suite Train-Test y Drift (`build_train_test_suite` para P1 y P2):** `DateTrainTestLeakageOverlap` y `DateTrainTestLeakageDuplicates` ($0\%$ de solapamiento temporal entre `train` y `test`), `FeatureDrift` (PSI $\le 0.30$ en categóricas, EMD $\le 0.25$ en numéricas) y `LabelDrift` ($\le 0.25$).
+
+### Cómo ejecutar las validaciones y las pruebas
+
+```bash
+# Ejecutar todas las pruebas automatizadas (PyTest + DeepChecks en casos normales y límite)
+make test                                              # o: pytest -v
+
+# Generar los 5 reportes HTML de DeepChecks con los datos procesados locales (data/processed/)
+make check-data                                        # o: python -m mibici.validation
+
+# Generar los reportes HTML en modo sintético (sin requerir la descarga de 758 MB)
+make check-data SYNTHETIC=1                            # o: python -m mibici.validation --synthetic
+```
+
+Los reportes interactivos se guardan en `reports/deepchecks/` (`p1_integrity.html`, `p1_train_test_drift.html`, `p2_integrity.html`, `p2_train_test_drift.html` y `p3_integrity.html`).
 
 ## Buenas prácticas y dónde se verifican
 

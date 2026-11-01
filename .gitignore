@@ -21,6 +21,9 @@ infra/users.txt
 # como artefacto en MLflow; solo se versiona el .gitkeep de la carpeta
 reports/figures/*.png
 
+# Reportes HTML de validación que escribe `make check-data`: se regeneran con DeepChecks
+reports/deepchecks/
+
 # Configuración del editor
 .vscode/
 

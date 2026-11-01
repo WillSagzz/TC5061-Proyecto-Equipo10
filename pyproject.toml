@@ -25,7 +25,7 @@ mibici = "mibici.experiments:ProjectExperimentProvider"
 [tool.ruff]
 line-length = 99
 src = ["mibici"]
-include = ["pyproject.toml", "mibici/**/*.py", "infra/scripts/*.py"]
+include = ["pyproject.toml", "mibici/**/*.py", "infra/scripts/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting
@@ -34,3 +34,12 @@ extend-select = ["I"]  # Add import sorting
 known-first-party = ["mibici"]
 force-sort-within-sections = true
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning:typer.*",
+    "ignore::DeprecationWarning:deepchecks.*",
+    "ignore::FutureWarning:deepchecks.*",
+    "ignore::DeprecationWarning:matplotlib.*",
+]
