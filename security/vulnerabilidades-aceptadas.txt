@@ -5,78 +5,10 @@
 #
 # Reglas: un identificador por línea; las líneas que empiezan con `#` se ignoran; al subir la
 # versión de un paquete se borra su bloque; se revisa la lista en cada auditoría. Fecha de la
-# última revisión: 2026-11-01 (Python 3.10, pip-audit 2.10.1).
+# última revisión: 2026-11-01 (Python 3.12, pip-audit 2.10.1).
 
-# setuptools 80.9.0 (corregido en 83.0.0 / 84.1.0). deepchecks 0.19.1 importa pkg_resources, que
-# setuptools >= 83 ya no incluye. Los avisos afectan a construir sdists en macOS y a instalar
-# wheels como eggs en Windows; el proyecto no hace ninguna de las dos.
+# setuptools 80.9.0 (corregido en 83.0.0 / 84.1.0). deepchecks 0.19.1, su versión más reciente,
+# importa pkg_resources, que setuptools >= 83 ya no incluye. Los avisos afectan a construir sdists
+# en macOS y a instalar wheels como eggs en Windows; el proyecto no hace ninguna de las dos.
 GHSA-xmj3-9gf7-h52w
 PYSEC-2026-3447
-
-# tornado 6.5.10 (corregido en 6.6, que requiere Python >= 3.11; el proyecto usa 3.10).
-# Transitiva de deepchecks vía ipykernel. Afecta al servidor HTTP de Tornado, que no se expone.
-CVE-2026-115927
-CVE-2026-116577
-CVE-2026-116578
-
-# filelock 4.1.0 (corregido en 4.2.1, que requiere Python >= 3.11). Transitiva de pip-audit vía
-# cachecontrol[filecache]: solo la usa el caché local de la propia herramienta de auditoría.
-CVE-2026-112906
-CVE-2026-112907
-CVE-2026-112908
-CVE-2026-112909
-CVE-2026-112910
-CVE-2026-112911
-CVE-2026-112912
-CVE-2026-112913
-CVE-2026-112914
-CVE-2026-112915
-CVE-2026-112934
-CVE-2026-112935
-CVE-2026-112937
-CVE-2026-112938
-CVE-2026-112939
-CVE-2026-112940
-CVE-2026-112941
-
-# pillow 12.3.0 (corregido en 13.0.0, que requiere Python >= 3.11). Transitiva de matplotlib:
-# el proyecto solo escribe las figuras PNG de `make train`; no decodifica imágenes de terceros.
-CVE-2026-112390
-CVE-2026-112391
-CVE-2026-112393
-CVE-2026-112395
-CVE-2026-112399
-CVE-2026-112400
-CVE-2026-112401
-CVE-2026-112404
-CVE-2026-112406
-CVE-2026-112891
-CVE-2026-112892
-CVE-2026-112893
-CVE-2026-112894
-CVE-2026-112895
-CVE-2026-112897
-CVE-2026-112899
-CVE-2026-112900
-CVE-2026-96638
-CVE-2026-96640
-CVE-2026-96778
-GHSA-78g4-xqwv-q3g8
-PYSEC-2026-4326
-PYSEC-2026-4327
-PYSEC-2026-4328
-PYSEC-2026-4329
-PYSEC-2026-4330
-PYSEC-2026-4331
-PYSEC-2026-4332
-PYSEC-2026-4333
-PYSEC-2026-4334
-PYSEC-2026-4335
-PYSEC-2026-4336
-PYSEC-2026-4337
-PYSEC-2026-4338
-PYSEC-2026-4339
-PYSEC-2026-4340
-PYSEC-2026-4341
-PYSEC-2026-4342
-PYSEC-2026-4343

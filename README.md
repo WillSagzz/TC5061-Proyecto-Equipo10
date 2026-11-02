@@ -1169,11 +1169,11 @@ separado en cuatro *jobs* para que la pestaña *Checks* del PR diga de un vistaz
 | `bandit` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` | Análisis estático de seguridad del código del proyecto. |
 | `pip-audit` | `python -m pip_audit -r requirements.txt --ignore-vuln ...` | Vulnerabilidades publicadas en las versiones fijadas en `requirements.txt`, salvo las aceptadas en `security/vulnerabilidades-aceptadas.txt`. |
 
-Todos corren con Python 3.10 (la versión del proyecto) y ninguno usa `continue-on-error`:
+Todos corren con Python 3.12 (la versión del proyecto) y ninguno usa `continue-on-error`:
 **un job `pip-audit` rojo significa que alguna dependencia tiene una vulnerabilidad publicada
 nueva y hay que subir su versión** en `requirements.txt` (y volver a correr `make check` para
-confirmar que nada se rompe). Los avisos que el equipo ya revisó y aceptó, porque su corrección
-no existe para Python 3.10 o no aplica al proyecto, viven en
+confirmar que nada se rompe). Los avisos que el equipo ya revisó y aceptó, porque no aplican al
+proyecto y su corrección no existe sin romper otra dependencia, viven en
 [`security/vulnerabilidades-aceptadas.txt`](security/vulnerabilidades-aceptadas.txt) con su
 justificación; `make security` y el *workflow* leen ese archivo y los pasan a `pip-audit` como
 `--ignore-vuln`. Aceptar un aviso nuevo exige agregarlo ahí, con el motivo, en el mismo PR. Los
