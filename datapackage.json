@@ -22,8 +22,8 @@
       "role": "author"
     }
   ],
-  "version": "2026-10",
-  "created": "2026-10-20T03:23:02+00:00",
+  "version": "2026-11",
+  "created": "2026-11-02T04:52:28+00:00",
   "resources": [
     {
       "name": "datos-abiertos-2024-09",
@@ -1494,8 +1494,8 @@
       "scheme": "file",
       "format": "parquet",
       "mediatype": "application/parquet",
-      "hash": "sha256:832bf69f2906ab2d92064e1a5c69e7d4f771014e6c4a449335cf47e7c298d6df",
-      "bytes": 163569458,
+      "hash": "sha256:4066a3948ea7425f30f7a9e81152958ca2d1e2d6d4216f355354db8f71b76f1e",
+      "bytes": 162985962,
       "rows": 8702429,
       "schema": {
         "fields": [
@@ -1530,8 +1530,8 @@
       "scheme": "file",
       "format": "parquet",
       "mediatype": "application/parquet",
-      "hash": "sha256:49ec0d0c30ce6a989d30f845abafa3b978b7c2960434d0e2ab023e5cc4e2d21e",
-      "bytes": 26832,
+      "hash": "sha256:2654fd13fd3514c1d90c79ac77d435e3834f8f89e706966c337d51b69ce2618b",
+      "bytes": 26803,
       "rows": 484,
       "schema": {
         "fields": [
