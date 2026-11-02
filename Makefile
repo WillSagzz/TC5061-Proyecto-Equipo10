@@ -3,7 +3,7 @@
 #################################################################################
 
 PROJECT_NAME = TC5061-Proyecto-Equipo10
-PYTHON_VERSION = 3.10
+PYTHON_VERSION = 3.12
 PYTHON_INTERPRETER = python
 
 # --env-manager local: usa el entorno activado (el gestor por defecto necesita pyenv)
