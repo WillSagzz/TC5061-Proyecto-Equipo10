@@ -266,7 +266,15 @@ def _log_model(model, example: pd.DataFrame, output: np.ndarray, file_name: str)
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, path)
     signature = infer_signature(example, output)
-    mlflow.sklearn.log_model(model, name="modelo", signature=signature, input_example=example)
+    # En MLflow 3.17 el formato por defecto es skops, que rechaza los estimadores propios del
+    # proyecto (baselines.py, thresholds.py); cloudpickle era el formato por defecto en 3.4.
+    mlflow.sklearn.log_model(
+        model,
+        name="modelo",
+        signature=signature,
+        input_example=example,
+        serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_CLOUDPICKLE,
+    )
 
 
 def _example_rows(X: pd.DataFrame, n_rows: int = 5) -> pd.DataFrame:
