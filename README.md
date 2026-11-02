@@ -171,7 +171,7 @@ las tres preguntas. Para evitar fuga de información del futuro:
 
 Los datos no están en Git. Lo que está en Git es [`datapackage.json`](datapackage.json): la
 lista de los 25 archivos del portal de MiBici (URL, tamaño, hash SHA-256 y columnas de cada
-uno), los 2 Parquet que produce la ingesta y una versión (`version`, por ejemplo `2026-10`).
+uno), los 2 Parquet que produce la ingesta y una versión (`version`, por ejemplo `2026-11`).
 `make data` descarga los archivos y los compara con esa lista antes de procesarlos; si alguno
 no coincide, se detiene. Solo `make snapshot` cambia `datapackage.json`, y el cambio entra a
 `main` por *Pull Request*.
@@ -330,7 +330,7 @@ mlflow run . -e ingest --env-manager local        # o: make data
 La primera vez descarga del portal de MiBici los 25 CSV de la versión de datos
 (`datapackage.json`, unos 720 MB) y verifica el tamaño y el hash de cada uno; después tarda
 unos dos minutos. Deja `data/processed/meses.parquet` y `nomenclatura.parquet` y registra el
-*run* `ingesta-2026-10` en el experimento `mibici-ingesta`.
+*run* `ingesta-2026-11` en el experimento `mibici-ingesta`.
 
 ### Paso 4. Entrenar
 
@@ -395,7 +395,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | Comando | Equivalente en Python | Qué hace |
 |---|---|---|
 | `make data` | `mlflow run . -e ingest --env-manager local` (ejecuta `python -m mibici.dataset`) | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. Queda registrada como *run* del experimento `mibici-ingesta`. |
-| `make snapshot VERSION=2026-10` | `python -m mibici.datapackage snapshot --version 2026-10` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
+| `make snapshot VERSION=2026-11` | `python -m mibici.datapackage snapshot --version 2026-11` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
 | `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
 | `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
