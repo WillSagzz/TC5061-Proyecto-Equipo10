@@ -283,7 +283,7 @@ están en las secciones [5](docs/entregas/entrega01/secciones/05-pipeline.md) y
 Seis pasos; unos diez minutos sin contar la descarga de datos de la primera vez. Todos los
 comandos se ejecutan desde la raíz del repositorio con el entorno activado.
 
-**Requisitos:** Python 3.12 o superior (el MLflow Project declara 3.12), Git y,
+**Requisitos:** Python 3.12 (la versión que declara el MLflow Project), Git y,
 opcionalmente, `make` (en Windows viene con Git Bash o se instala con
 `winget install GnuWin32.Make`). Sin `make`, usa el comando `mlflow run` equivalente que
 aparece junto a cada regla.
@@ -305,7 +305,7 @@ editable (`-e .`). Ese paso registra también el *plugin* de MLflow que elige el
 de cada *run*, así que no lo omitas. Comprobación:
 
 ```bash
-python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok 3.17.2
+python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok y la versión fijada en requirements.txt
 ```
 
 ### Paso 2. Elegir dónde se registran los *runs*
@@ -938,7 +938,7 @@ avisa al equipo antes de reescribir nada.
 
 El código sigue **[PEP 8](https://peps.python.org/pep-0008/)**, verificado automáticamente con
 **[Ruff](https://docs.astral.sh/ruff/)**, que ya viene configurado en
-[`pyproject.toml`](pyproject.toml). El proyecto requiere **Python 3.12 o superior**
+[`pyproject.toml`](pyproject.toml). El proyecto requiere **Python 3.12**
 (`requires-python` en `pyproject.toml`).
 
 ### 1. Formateo automático
