@@ -231,8 +231,9 @@ Managed Identity antes de desplegar y los imprime como expresiones. Es ruido con
 
 - **Imagen oficial sin personalizar.** La variante `-full` incluye el *driver* de PostgreSQL,
   el cliente de Blob, `azure-identity` y la autenticación básica desde la versión 3.14. El
-  cliente 3.4.0 del repositorio habla con un servidor 3.x más nuevo, que es la dirección de
-  compatibilidad que MLflow soporta.
+  cliente 3.17.2 del repositorio y el servidor 3.17.1 comparten la versión menor; antes el
+  cliente era 3.4.0 y hablaba con un servidor más nuevo, la dirección de compatibilidad que
+  MLflow soporta.
 - **`MLFLOW_SERVER_ALLOWED_HOSTS`.** Desde MLflow 3.5 el servidor rechaza con 403 las
   peticiones cuya cabecera `Host` no esté en la lista; el template la llena con el FQDN de la
   Container App y lo resuelve solo.
@@ -261,7 +262,7 @@ Managed Identity antes de desplegar y los imprime como expresiones. Es ruido con
   administrador de ellos. El usuario de solo lectura no puede tocar los experimentos, *runs* ni
   modelos del equipo, pero sí podría crear los suyos; si ocurre, el `admin` los borra desde la
   interfaz. Activar *workspaces* lo evitaría, pero cambia la API y no se ha probado con el
-  cliente 3.4 del repositorio. La base de usuarios y roles es la misma PostgreSQL del *tracking*
+  cliente 3.17 del repositorio. La base de usuarios y roles es la misma PostgreSQL del *tracking*
   (tablas propias), así que sobrevive a redeploys.
 - **Firewall de PostgreSQL** con la regla `0.0.0.0` ("servicios de Azure") porque la Container
   App del plan Consumption no tiene IP fija. Para conectarte con `psql` desde tu máquina agrega
@@ -275,7 +276,7 @@ Managed Identity antes de desplegar y los imprime como expresiones. Es ruido con
   administrado; su alternativa es usar un *workspace* de Azure ML como *tracker*, que muestra
   los *runs* en Azure ML Studio (no en la interfaz de MLflow), da soporte oficial hasta MLflow
   2.16 y exige una identidad de Microsoft Entra ID por integrante. El curso pide capturas de la interfaz de
-  MLflow y el repositorio fija `mlflow==3.4.0`.
+  MLflow y el repositorio fija `mlflow==3.17.2`.
 - **Container Apps + PostgreSQL + Blob** es la combinación que documenta la propia guía de
   MLflow para Azure y la que usan los despliegues publicados en 2025 y 2026. App Service solo
   aparece en guías de 2020 a 2023 y tiene un límite de memoria compartida que rompe MLflow

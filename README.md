@@ -305,7 +305,7 @@ editable (`-e .`). Ese paso registra también el *plugin* de MLflow que elige el
 de cada *run*, así que no lo omitas. Comprobación:
 
 ```bash
-python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok 3.4.0
+python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok 3.17.2
 ```
 
 ### Paso 2. Elegir dónde se registran los *runs*
@@ -1125,10 +1125,15 @@ Al ejecutar un análisis con `bandit` en el proyecto, no se encontro ninguna pru
 
 ### Análisis de dependencias
 
-Utilizando el paquete de `pip-audit`, se realiza una auditoria de los paquetes en el proyecto. Se reporta una lista de vulnerabilidades conocidas de los paquetes utilizadas.
+Utilizando el paquete `pip-audit`, se realiza una auditoría de los paquetes del proyecto contra
+las bases de avisos de seguridad de PyPI y OSV. Se reporta una lista de vulnerabilidades
+conocidas de los paquetes utilizados, con el identificador del aviso y la versión que lo corrige.
 
-El comportamiento por default es analizar los paquetes instalados en el ambiente donde se esta ejecutando el proyecto, pero puede seleccionarse la opción de analizar los paquetes definidos en el archivo de requerimientos del proyecto.
-En este caso se optó por utilizar ambos análisis. A continuación se muestra como utilizar el paquete para analizar los paquetes del proyecto y generar reportes de riesgos:
+El comportamiento por defecto es analizar los paquetes instalados en el ambiente donde se está
+ejecutando el proyecto, pero puede seleccionarse la opción de analizar los paquetes definidos en
+el archivo de requerimientos del proyecto. En este caso se optó por utilizar ambos análisis. A
+continuación se muestra cómo utilizar el paquete para analizar los paquetes del proyecto y
+generar reportes de riesgos (la carpeta `security/` excluye los reportes de Git):
 
 Análisis de los paquetes instalados en el ambiente del proyecto:
 ``` bash
@@ -1137,8 +1142,84 @@ pip-audit -f markdown -o ./security/pip_audit_env_report.md
 
 Análisis de los paquetes definidos en el archivo de requerimientos:
 ``` bash
-pip-audit -r requirements -f markdown -o ./security/pip_audit_req_report.md
+pip-audit -r requirements.txt -f markdown -o ./security/pip_audit_req_report.md
 ```
+
+#### Resultado de la auditoría y acciones tomadas
+
+Auditoría de `requirements.txt` con `pip-audit 2.10.1` sobre Python 3.10 (1 de noviembre de 2026):
+
+| `pip-audit -r requirements.txt` | Antes (PR #29) | Después (este cambio) |
+|---|---|---|
+| Vulnerabilidades conocidas | 139 | 62 |
+| Paquetes afectados | 12 | 4 |
+
+**Versiones actualizadas.** Se subió cada paquete directo a la versión más baja que `pip-audit`
+reporta como corregida; `mlflow` a la misma versión que el servidor del equipo
+([`infra/main.bicepparam`](infra/main.bicepparam)):
+
+| Paquete | Antes | Después | Avisos corregidos | Nota |
+|---|---|---|---|---|
+| `mlflow` | 3.4.0 | 3.17.2 | 51 | directa; cliente y servidor comparten versión |
+| `cryptography` | 45.0.7 | 50.0.0 | 13 | transitiva de `mlflow` (`< 51`); se fija explícitamente |
+| `requests` | 2.32.5 | 2.33.0 | 2 | directa |
+| `pyarrow` | 21.0.0 | 23.0.1 | 2 | directa |
+| `python-dotenv` | 1.1.1 | 1.2.2 | 2 | directa |
+| `fastmcp`, `diskcache`, `dnspython` | 2.14.7, 5.6.3, 2.8.0 | — | 7 | dejan de instalarse: `mlflow` 3.17.2 solo las trae con el extra `mlflow[mcp]` |
+
+`sqlalchemy==2.0.55` y `alembic==1.20.0` se conservan: `mlflow` 3.17.2 pide `sqlalchemy<3,>=1.4`
+y `alembic<2`, y las versiones nuevas de SQLAlchemy (2.1) requieren Python 3.11.
+
+Cambio de comportamiento que exigió tocar código: en MLflow 3.17 el formato por defecto de
+`mlflow.sklearn.log_model` pasó de `cloudpickle` a `skops`, que rechaza los estimadores propios
+del proyecto (`baselines.py`, `thresholds.py`); `train.py` fija `serialization_format="cloudpickle"`,
+el formato que ya usaban los modelos registrados.
+
+**Riesgos aceptados.** Los 62 avisos restantes están en 4 paquetes que no pueden actualizarse
+en este proyecto; se revisan en cada auditoría:
+
+| Paquete | Versión | Avisos | Corregido en | Por qué se acepta |
+|---|---|---|---|---|
+| `pillow` (transitiva de `matplotlib`) | 12.3.0 | 39 | 13.0.0 | La corrección requiere Python ≥ 3.11 y el proyecto usa 3.10 (`python_env.yaml`). Pillow solo escribe las figuras PNG que genera `make train`; el proyecto no decodifica imágenes de terceros. |
+| `filelock` (transitiva de `pip-audit`, vía `cachecontrol[filecache]`) | 4.1.0 | 17 | 4.2.1 | Requiere Python ≥ 3.11. Solo lo usa el caché local de `pip-audit`, una herramienta de desarrollo. |
+| `tornado` (transitiva de `deepchecks`, vía `ipykernel`) | 6.5.10 | 3 | 6.6 | Requiere Python ≥ 3.11. Los avisos afectan al servidor HTTP de Tornado, que el proyecto no expone (los reportes de DeepChecks se exportan a HTML sin servidor). |
+| `setuptools` | 80.9.0 | 3 (2 identificadores) | 83.0.0 / 84.1.0 | `deepchecks` 0.19.1 importa `pkg_resources`, que `setuptools` ≥ 83 ya no incluye (se comprobó que `import pkg_resources` falla con 83.0.0 y 84.1.0). Los avisos afectan a la construcción de *sdists* en macOS y a la instalación heredada de *wheels* como *eggs* en Windows; el proyecto no hace ninguna de las dos. |
+
+Migrar el proyecto a Python 3.11 o superior eliminaría 59 de los 62 avisos (`pillow`, `filelock`
+y `tornado`); es una decisión del equipo porque cambia `python_env.yaml`, el `Makefile` y la
+guía de instalación.
+
+Para que la auditoría falle solo ante avisos nuevos, los riesgos aceptados se excluyen con
+`--ignore-vuln` (un identificador por bandera):
+
+<details>
+<summary>Comando con los 61 identificadores aceptados</summary>
+
+``` bash
+pip-audit -r requirements.txt   --ignore-vuln GHSA-xmj3-9gf7-h52w --ignore-vuln PYSEC-2026-3447 \
+  --ignore-vuln CVE-2026-115927 --ignore-vuln CVE-2026-116577 --ignore-vuln CVE-2026-116578 \
+  --ignore-vuln CVE-2026-112906 --ignore-vuln CVE-2026-112907 --ignore-vuln CVE-2026-112908 \
+  --ignore-vuln CVE-2026-112909 --ignore-vuln CVE-2026-112910 --ignore-vuln CVE-2026-112911 \
+  --ignore-vuln CVE-2026-112912 --ignore-vuln CVE-2026-112913 --ignore-vuln CVE-2026-112914 \
+  --ignore-vuln CVE-2026-112915 --ignore-vuln CVE-2026-112934 --ignore-vuln CVE-2026-112935 \
+  --ignore-vuln CVE-2026-112937 --ignore-vuln CVE-2026-112938 --ignore-vuln CVE-2026-112939 \
+  --ignore-vuln CVE-2026-112940 --ignore-vuln CVE-2026-112941 \
+  --ignore-vuln CVE-2026-112390 --ignore-vuln CVE-2026-112391 --ignore-vuln CVE-2026-112393 \
+  --ignore-vuln CVE-2026-112395 --ignore-vuln CVE-2026-112399 --ignore-vuln CVE-2026-112400 \
+  --ignore-vuln CVE-2026-112401 --ignore-vuln CVE-2026-112404 --ignore-vuln CVE-2026-112406 \
+  --ignore-vuln CVE-2026-112891 --ignore-vuln CVE-2026-112892 --ignore-vuln CVE-2026-112893 \
+  --ignore-vuln CVE-2026-112894 --ignore-vuln CVE-2026-112895 --ignore-vuln CVE-2026-112897 \
+  --ignore-vuln CVE-2026-112899 --ignore-vuln CVE-2026-112900 --ignore-vuln CVE-2026-96638 \
+  --ignore-vuln CVE-2026-96640 --ignore-vuln CVE-2026-96778 --ignore-vuln GHSA-78g4-xqwv-q3g8 \
+  --ignore-vuln PYSEC-2026-4326 --ignore-vuln PYSEC-2026-4327 --ignore-vuln PYSEC-2026-4328 \
+  --ignore-vuln PYSEC-2026-4329 --ignore-vuln PYSEC-2026-4330 --ignore-vuln PYSEC-2026-4331 \
+  --ignore-vuln PYSEC-2026-4332 --ignore-vuln PYSEC-2026-4333 --ignore-vuln PYSEC-2026-4334 \
+  --ignore-vuln PYSEC-2026-4335 --ignore-vuln PYSEC-2026-4336 --ignore-vuln PYSEC-2026-4337 \
+  --ignore-vuln PYSEC-2026-4338 --ignore-vuln PYSEC-2026-4339 --ignore-vuln PYSEC-2026-4340 \
+  --ignore-vuln PYSEC-2026-4341 --ignore-vuln PYSEC-2026-4342 --ignore-vuln PYSEC-2026-4343
+```
+
+</details>
 
 ## Integrantes y roles
 

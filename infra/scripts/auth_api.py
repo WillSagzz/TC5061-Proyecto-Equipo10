@@ -1,8 +1,9 @@
 """Cliente mínimo de la API de autenticación básica de MLflow.
 
 Se usa ``requests`` directamente, en lugar de ``mlflow.server.get_app_client``, porque la
-clase de MLflow cambia entre versiones (el cliente del repo es 3.4 y el servidor 3.17) y
-estos *endpoints* REST existen en ambas. Referencia: ``mlflow/server/auth/routes.py``.
+clase de MLflow cambia entre versiones (el cliente del repo fue 3.4 con un servidor 3.17; hoy
+ambos son 3.17) y estos *endpoints* REST existen en todas ellas. Referencia:
+``mlflow/server/auth/routes.py``.
 """
 
 from __future__ import annotations
