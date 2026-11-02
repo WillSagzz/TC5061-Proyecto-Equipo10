@@ -3,38 +3,17 @@ titulo: "TC5061 · Proyecto MiBici: Pruebas y chequeos de seguridad · Equipo 10
 archivo_salida: TC5061_Tests_Seguridad_Equipo10
 ---
 
-<!-- Orden de las secciones. Compilar con `make entrega03`. -->
+<!-- Compilar con `make entrega03`. Resumen corto (unas 5 páginas) que acompaña al repositorio, que es
+     la entrega en sí: portada y un solo cuerpo con una captura por punto de la actividad. -->
+
+<style>
+h1::before { content: none; }  /* un solo título; los puntos de la actividad van numerados en los h2 */
+figure img { max-height: 7.5cm; }
+figure { margin: 0.5em 0 0.8em; }
+</style>
 
 {!secciones/00-portada.md!}
 
-## Contenido {.sin-toc}
-
-{{toc}}
-
 <!-- pagebreak -->
 
-{!secciones/01-repositorio.md!}
-
-<!-- pagebreak -->
-
-{!secciones/02-pruebas-unitarias.md!}
-
-<!-- pagebreak -->
-
-{!secciones/03-validacion-deepchecks.md!}
-
-<!-- pagebreak -->
-
-{!secciones/04-seguridad.md!}
-
-<!-- pagebreak -->
-
-{!secciones/05-organizacion-colaboracion.md!}
-
-<!-- pagebreak -->
-
-{!secciones/06-rubrica.md!}
-
-<!-- pagebreak -->
-
-{!secciones/07-referencias.md!}
+{!secciones/01-entregable.md!}
