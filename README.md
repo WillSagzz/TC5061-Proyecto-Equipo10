@@ -798,8 +798,8 @@ python -m pytest tests/test_dataset.py -v
 ### Evidencia de ejecución de las pruebas y los chequeos de seguridad
 
 Capturas de la última ejecución local de los chequeos (1 de noviembre de 2026, Python 3.12, entorno
-virtual nuevo); las de terminal son renders del texto real que imprimió cada comando y la de
-DeepChecks usa el generador sintético (`make check-data SYNTHETIC=1`). El detalle está en el reporte de
+virtual nuevo); las de terminal son renders del texto real que imprimió cada comando, y la de
+DeepChecks corre sobre los datos reales de la versión `2026-11` (`make data` y `make check-data`). El detalle está en el reporte de
 la Entrega 03 ([`docs/entregas/entrega03/`](docs/entregas/entrega03/), `make entrega03`) y GitHub
 Actions conserva la ejecución de los mismos chequeos en cada PR ([Integración continua](#integración-continua)).
 
@@ -807,9 +807,9 @@ Actions conserva la ejecución de los mismos chequeos en cada PR ([Integración 
 
 *`make test`: las 123 pruebas de `tests/` aprobadas.*
 
-![make check-data SYNTHETIC=1: las cinco suites de DeepChecks aprueban](docs/entregas/entrega03/figuras/deepchecks_01_consola.png)
+![make check-data: las cinco suites de DeepChecks aprueban con los datos reales](docs/entregas/entrega03/figuras/deepchecks_01_consola.png)
 
-*`make check-data SYNTHETIC=1`: las cinco suites de DeepChecks aprueban y se exportan los reportes HTML.*
+*`make check-data`: las cinco suites de DeepChecks aprueban sobre los datos reales (8.7 millones de viajes) y se exportan los reportes HTML.*
 
 ![bandit: No issues identified](docs/entregas/entrega03/figuras/bandit_01_resultado.png)
 
