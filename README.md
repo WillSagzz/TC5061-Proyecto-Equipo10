@@ -409,6 +409,9 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make mlflow-password` | `python infra/scripts/change_password.py` | Cambia tu propia contraseña en el servidor compartido (sin Azure). |
 | `make infra-*` | `az ...` | Despliegue y mantenimiento del servidor en Azure; solo para quien administra la suscripción. Ver [`infra/README.md`](infra/README.md). |
 | `make lint` / `make format` | `ruff format --check && ruff check` / `ruff check --fix && ruff format` | Verifica o corrige el estilo del código. |
+| `make security` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` y `python -m pip_audit -r requirements.txt --ignore-vuln ...` | **Chequeos de seguridad.** Análisis estático del código del proyecto con `bandit` (configurado en `pyproject.toml`) y auditoría de vulnerabilidades conocidas en `requirements.txt` con `pip-audit`, omitiendo solo los avisos aceptados y justificados en `security/vulnerabilidades-aceptadas.txt`. Termina con error si alguna herramienta reporta un hallazgo nuevo. Ver [Seguridad del repositorio](#seguridad-del-repositorio). |
+| `make security-report` | los mismos análisis con `-f html`, `-f csv` y `-f markdown` | Escribe los reportes en `security/` (`bandit_report.html`, `bandit_report.csv`, `pip_audit_env_report.md` y `pip_audit_req_report.md`); la carpeta está fuera de Git. |
+| `make check` | `make lint test security` | **Todos los chequeos con un solo comando**: estilo, pruebas automatizadas y seguridad. Es lo mismo que ejecuta GitHub Actions en cada PR ([Integración continua](#integración-continua)). |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 
@@ -805,6 +808,7 @@ python -m pytest tests/test_dataset.py -v
 | Estructura y código | Dependencias con versión fija y entorno reproducible. | `requirements.txt` con `==` en cada paquete; instalación documentada arriba y probada desde un clon limpio en cada PR. | `requirements.txt` y este README. |
 | Datos y Git | Ningún dato de MiBici, modelo, carpeta de MLflow ni credencial en el historial. | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/`, `mlflow.db`, `*.pkl`, `*.joblib`, `*.pickle` y `.env`; el revisor lo comprueba en cada PR. | `.gitignore` e historial. |
 | Datos y Git | Todo cambio entra a `main` por *Pull Request* revisado. | *Ruleset* sobre `main`: PR obligatorio con una aprobación, conversaciones resueltas, solo *squash merge*, sin *force push* ni borrado. | Pestaña de *Pull Requests*. |
+| Seguridad | Chequeos de seguridad ejecutables con un solo comando y en cada PR. | `make check` corre `ruff`, PyTest, `bandit` (configurado en `pyproject.toml`, cada `# nosec` con su justificación) y `pip-audit` sobre `requirements.txt`; GitHub Actions ejecuta lo mismo en cada PR y en `main`. | Pestaña *Checks* del PR, `security/` tras `make security-report` y la sección [Seguridad del repositorio](#seguridad-del-repositorio). |
 
 ## Flujo de trabajo con Git/GitHub
 
@@ -1099,38 +1103,91 @@ Estas son algunas de las prácticas implementadas por el equipo de desarrollo pa
   - `.env`: Archivos de configuración que pueden contener contraseñas, usuarios, llaves API, y otros datos sensibles.
   - Credenciales: Archivos como `.pem`, `.key`, `.crt`, `.p12`, o `.pfx`. Pues estos son formatos estándar para almacenar certificados o llaves criptográficas.
   - Credenciales en `json`: Archivos como `credentials.json` o `service-account*.json`. Nombres de archivo comúnes para almacenar credenciales.
+  - `.claude/`: Configuración local y *worktrees* del agente de IA, que pueden contener rutas locales y ajustes personales de cada integrante.
 - Archivo `.gitignore` en el folder de reportes de seguridad. Para asegurar que los reportes sobre vulnerabilidades no puedan ser expuestos en el repositorio remoto.
 - Compartir usuarios, contraseñas, o credenciales mediante variables de ambiente o archivos de configuración no rastreados en git. En lugar de agregar estos datos directamente en el código.
-- Habilitar la medida de seguridad de `Secret Protection` en GitHub. Para monitorear constantemente el repositorio y prevenir la exposición de contraseñas y credenciales.
+- `Secret Protection` de GitHub (*secret scanning* con *push protection*) debe estar habilitado en el repositorio, para que GitHub bloquee los *push* que contengan credenciales conocidas y avise de las que ya existan. Lo activa quien administra el repositorio en *Settings → Code security → Secret Protection*, y en esa misma pantalla se verifica que siga activo (requiere permisos de administrador; no se puede comprobar desde la línea de comandos con la cuenta de un integrante).
 
 Mediante las exclusiones utilizando `.gitignore` podemos asegurarnos de no exponer credenciales en el repositorio, y mitigar el riesgo de exponer datos sensibles.
 Con las prácticas descritas para los desarrolladores se mitiga el riesgo de exponer contraseñas y datos sensibles.
-Finalmente, con el uso de `Secret Protection` se mitiga en gran medida el riesgo de exponer contraseñas y credenciales.
+Finalmente, con `Secret Protection` habilitado se mitiga en gran medida el riesgo de exponer contraseñas y credenciales, siempre que quien administra el repositorio confirme en *Settings → Code security* que la opción sigue activa.
 
 ### Análisis estático de código
 
 Utilizando el paquete de `bandit`, se realiza un análisis estático de código para encontrar vulnerabilidades conocidas. A la vez que este paquete contiene una categoría de búsqueda para contraseñas y credenciales _hardcodeadas_ en los archivos del proyecto.
 
-A continuación se muestra como ejecutar el análisis y producir un reporte de vulnerabilidades. Este comando debe correrse desde la raíz del proyecto:
+El análisis se ejecuta desde la raíz del proyecto, con el entorno activado:
 
-Para obtener un reporte en formato HTML:
 ``` bash
-bandit -f html -o ./security/bandit_report.html -r ./
+make security        # bandit + pip-audit; termina con error si hay hallazgos
+# equivalente sin make (solo bandit):
+python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests
 ```
 
-Para obtener un reporte en formato CSV:
+**Por qué el alcance está restringido.** `bandit` no lee `.gitignore`: un `bandit -r ./` desde la
+raíz recorre también `.venv/` (miles de archivos de *site-packages* que no son código del equipo)
+y reporta cada `assert` de `tests/` como B101, lo que sepulta los hallazgos reales. Por eso el
+comando analiza solo el código del proyecto (`mibici/`, `infra/scripts/`,
+`docs/entregas/build.py` y `tests/`) y la configuración vive en [`pyproject.toml`](pyproject.toml),
+sección `[tool.bandit]`: excluye los entornos virtuales, `notebooks/` y las salidas compiladas de
+las entregas, y omite B101 únicamente dentro de `tests/`, donde `assert` es la forma normal de
+verificar en PyTest.
+
+Para generar los reportes en `security/` (carpeta fuera de Git) con la misma configuración:
+
 ``` bash
-bandit -f csv -o ./security/bandit_report.csv -r ./
+make security-report
+# equivalente sin make:
+python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests -f html -o ./security/bandit_report.html
+python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests -f csv -o ./security/bandit_report.csv
 ```
 
-Opcionalmente se puede añadir la bandera de filtrado del nivel de severidad. Para reportar únicamente los riesgos con nivel de severidad alto (high):
-``` bash
-bandit -f html -o ./security/bandit_report.html -lll -r ./
-```
+Opcionalmente se puede añadir la bandera de filtrado del nivel de severidad: con `-lll` al final
+de cualquiera de los comandos anteriores se reportan únicamente los riesgos con nivel de severidad
+alto (high).
+
+**Hallazgos atendidos.** El análisis del código del proyecto termina hoy con **0 hallazgos**. Los
+que reportaba `bandit` (todos de severidad baja) se resolvieron así:
+
+| Archivo | Regla | Qué reportaba | Cómo se atendió |
+|---|---|---|---|
+| `infra/scripts/check_server.py` | B101 | Tres `assert` verificaban el *run* leído del servidor; `python -O` los elimina y la prueba dejaría de comprobar. | Se sustituyeron por comprobaciones explícitas que terminan con un mensaje claro y código de salida 1. |
+| `mibici/experiments.py` | B404, B603, B607 | `import subprocess` y dos `subprocess.run(["git", ...])` para etiquetar el *run* con el commit. | `# nosec` con justificación en el código: lista de argumentos fija, sin `shell=True` y sin entrada del usuario. |
+| `docs/entregas/build.py` | B404, B603 | `subprocess.run` que lanza el navegador *headless* o `pandoc` para producir el PDF de la entrega. | `# nosec` con justificación en el código: ejecutable resuelto por el propio script (rutas conocidas o `shutil.which`) y argumentos fijos. |
+| `tests/` | B101 | Los `assert` de PyTest. | Omitidos por configuración (`[tool.bandit.assert_used]`), solo dentro de `tests/`. |
+
+**Política para `# nosec`.** Un `# nosec` siempre indica la regla que omite (`# nosec B603`, nunca
+un `# nosec` a secas), va acompañado de un comentario que explica por qué el código es seguro y
+requiere la aprobación explícita de quien revisa el PR. Si la justificación no convence, se corrige
+el código en lugar de silenciar la regla.
 
 A través de este análisis estático también podemos asegurarnos de no exponer contraseñas en el repositorio. Puesto que el paquete `bandit` cuenta con una categoría de pruebas para detectar contraseñas _harcodeadas_.
 
-Al ejecutar un análisis con `bandit` en el proyecto, no se encontro ninguna prueba fallida de contraseñas _hardcodeadas_ en el reporte. Por lo que podemos asegurar que no es un problema actualmente en el repositorio del proyecto.
+Al ejecutar un análisis con `bandit` en el proyecto, no se encontró ninguna prueba fallida de contraseñas _hardcodeadas_ en el reporte. Por lo que podemos asegurar que no es un problema actualmente en el repositorio del proyecto.
+
+### Integración continua
+
+El workflow [`.github/workflows/checks.yml`](.github/workflows/checks.yml) ejecuta en GitHub
+Actions, en cada *pull request* y en cada *push* a `main`, lo mismo que `make check` en local,
+separado en cuatro *jobs* para que la pestaña *Checks* del PR diga de un vistazo qué falló:
+
+| Job | Comando | Qué verifica |
+|---|---|---|
+| `lint` | `ruff format --check` y `ruff check` | Formato y estilo del código (PEP 8). |
+| `test` | `python -m pytest -v` | La suite de `tests/`; trabaja con datos sintéticos, sin descargar los datos de MiBici ni usar `.env`. |
+| `bandit` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` | Análisis estático de seguridad del código del proyecto. |
+| `pip-audit` | `python -m pip_audit -r requirements.txt --ignore-vuln ...` | Vulnerabilidades publicadas en las versiones fijadas en `requirements.txt`, salvo las aceptadas en `security/vulnerabilidades-aceptadas.txt`. |
+
+Todos corren con Python 3.12 (la versión del proyecto) y ninguno usa `continue-on-error`:
+**un job `pip-audit` rojo significa que alguna dependencia tiene una vulnerabilidad publicada
+nueva y hay que subir su versión** en `requirements.txt` (y volver a correr `make check` para
+confirmar que nada se rompe). Los avisos que el equipo ya revisó y aceptó, porque no aplican al
+proyecto y su corrección no existe sin romper otra dependencia, viven en
+[`security/vulnerabilidades-aceptadas.txt`](security/vulnerabilidades-aceptadas.txt) con su
+justificación; `make security` y el *workflow* leen ese archivo y los pasan a `pip-audit` como
+`--ignore-vuln`. Aceptar un aviso nuevo exige agregarlo ahí, con el motivo, en el mismo PR. Los
+*jobs* no sustituyen la revisión del PR: quien aprueba sigue comprobando lo que lista
+[Pull Requests y revisiones](#5-pull-requests-y-revisiones).
 
 ### Análisis de dependencias
 

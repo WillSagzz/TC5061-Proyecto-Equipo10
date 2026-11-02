@@ -9,3 +9,5 @@
 *.cyclonedx-json
 *.cyclonedx-xml
 *.md
+# Excepción: la lista de avisos aceptados sí se versiona (la leen make security y el workflow)
+!vulnerabilidades-aceptadas.txt

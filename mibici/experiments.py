@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import subprocess
+import subprocess  # nosec B404
 import sys
 
 from dotenv import load_dotenv
@@ -133,18 +133,20 @@ def resolve_experiment(key: str) -> str:
 # -----------------------------------------------------------------------------
 def git_state() -> tuple[str, bool]:
     """Commit actual y si hay cambios sin commit."""
+    # Los dos subprocesos ejecutan git con una lista de argumentos fija, sin shell y sin
+    # entrada del usuario; por eso se omiten B603 (subprocess sin shell) y B607 (ruta parcial).
     try:
-        commit = subprocess.run(
+        head = subprocess.run(  # nosec B603 B607
             ["git", "rev-parse", "HEAD"], cwd=PROJ_ROOT, capture_output=True, text=True, check=True
-        ).stdout.strip()
-        changes = subprocess.run(
+        )
+        status = subprocess.run(  # nosec B603 B607
             ["git", "status", "--porcelain", "--untracked-files=no"],
             cwd=PROJ_ROOT,
             capture_output=True,
             text=True,
             check=True,
-        ).stdout.strip()
-        return commit, bool(changes)
+        )
+        return head.stdout.strip(), bool(status.stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
         return "sin_git", True
 

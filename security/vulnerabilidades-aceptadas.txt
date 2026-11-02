@@ -1,0 +1,14 @@
+# Avisos de pip-audit aceptados por el equipo: `make security` y el workflow de GitHub Actions
+# los pasan a pip-audit como `--ignore-vuln`, de modo que la auditoría solo falla ante avisos
+# nuevos. Cada bloque dice el paquete, por qué no se puede corregir y por qué se acepta; la
+# explicación completa está en el README, sección "Análisis de dependencias".
+#
+# Reglas: un identificador por línea; las líneas que empiezan con `#` se ignoran; al subir la
+# versión de un paquete se borra su bloque; se revisa la lista en cada auditoría. Fecha de la
+# última revisión: 2026-11-01 (Python 3.12, pip-audit 2.10.1).
+
+# setuptools 80.9.0 (corregido en 83.0.0 / 84.1.0). deepchecks 0.19.1, su versión más reciente,
+# importa pkg_resources, que setuptools >= 83 ya no incluye. Los avisos afectan a construir sdists
+# en macOS y a instalar wheels como eggs en Windows; el proyecto no hace ninguna de las dos.
+GHSA-xmj3-9gf7-h52w
+PYSEC-2026-3447

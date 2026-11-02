@@ -173,6 +173,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv*/
 env/
 venv/
 ENV/
@@ -226,3 +227,6 @@ docs/entregas/**/build/
 *.pfx
 credentials.json
 service-account*.json
+
+# Configuración local y worktrees del agente de IA (Claude Code); nunca se versiona
+.claude/

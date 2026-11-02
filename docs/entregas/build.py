@@ -27,7 +27,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
 import unicodedata
@@ -321,14 +321,21 @@ def html_a_pdf(html: Path, pdf: Path) -> bool:
             html.resolve().as_uri(),
         ]
         print(f"  navegador: {navegador}")
-        resultado = subprocess.run(comando, capture_output=True, text=True, timeout=180)
+        # Lista de argumentos fija y sin shell; el ejecutable lo elige buscar_navegador() entre
+        # rutas conocidas o la variable de entorno del propio usuario (bandit B603).
+        resultado = subprocess.run(  # nosec B603
+            comando, capture_output=True, text=True, timeout=180
+        )
         if esperar_pdf(pdf):
             return True
         print(resultado.stdout, resultado.stderr, file=sys.stderr)
     pandoc = shutil.which("pandoc")
     if pandoc:
         print("  navegador no disponible, usando pandoc")
-        resultado = subprocess.run([pandoc, str(html), "-o", str(pdf)], capture_output=True, text=True)
+        # Ruta resuelta con shutil.which y argumentos fijos, sin shell (bandit B603).
+        resultado = subprocess.run(  # nosec B603
+            [pandoc, str(html), "-o", str(pdf)], capture_output=True, text=True
+        )
         if resultado.returncode == 0:
             return True
         print(resultado.stderr, file=sys.stderr)
