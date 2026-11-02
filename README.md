@@ -283,7 +283,7 @@ están en las secciones [5](docs/entregas/entrega01/secciones/05-pipeline.md) y
 Seis pasos; unos diez minutos sin contar la descarga de datos de la primera vez. Todos los
 comandos se ejecutan desde la raíz del repositorio con el entorno activado.
 
-**Requisitos:** Python 3.10 o superior (el MLflow Project declara 3.10), Git y,
+**Requisitos:** Python 3.12 (la versión que declara el MLflow Project), Git y,
 opcionalmente, `make` (en Windows viene con Git Bash o se instala con
 `winget install GnuWin32.Make`). Sin `make`, usa el comando `mlflow run` equivalente que
 aparece junto a cada regla.
@@ -293,7 +293,7 @@ aparece junto a cada regla.
 ```bash
 git clone https://github.com/WillSagzz/TC5061-Proyecto-Equipo10.git
 cd TC5061-Proyecto-Equipo10
-python -m venv .venv
+python3.12 -m venv .venv             # Windows: py -3.12 -m venv .venv
 source .venv/bin/activate            # macOS / Linux
 # .venv\Scripts\activate             # Windows (PowerShell o cmd)
 python -m pip install -U pip
@@ -305,7 +305,7 @@ editable (`-e .`). Ese paso registra también el *plugin* de MLflow que elige el
 de cada *run*, así que no lo omitas. Comprobación:
 
 ```bash
-python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok 3.4.0
+python -c "import mibici, mlflow; print('ok', mlflow.__version__)"     # -> ok y la versión fijada en requirements.txt
 ```
 
 ### Paso 2. Elegir dónde se registran los *runs*
@@ -416,7 +416,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 
 Todas las corridas se lanzan desde el **MLflow Project** de la raíz
 ([`MLproject`](MLproject)), nunca desde un *notebook*. `mlflow run` lee ese archivo, activa o
-construye el entorno declarado en [`python_env.yaml`](python_env.yaml) (Python 3.10 y las
+construye el entorno declarado en [`python_env.yaml`](python_env.yaml) (Python 3.12 y las
 mismas versiones fijas de `requirements.txt`), sustituye los parámetros en el comando del
 punto de entrada y envuelve la ejecución en un *run* que registra por sí solo el commit de
 Git, el punto de entrada, el entorno y los parámetros. Con eso, cualquier *run* se reproduce
@@ -675,7 +675,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ```
 ├── Makefile              <- Reglas: data, train, baselines, run, search, mlflow-ui, snapshot, validate, lint, format, entrega01, entrega02, infra-*, mlflow-password
 ├── MLproject             <- MLflow Project: entorno (python_env.yaml) y puntos de entrada `ingest`, `train` y `search`
-├── python_env.yaml       <- Entorno del MLflow Project: Python 3.10 y `-r requirements.txt` (sin repetir versiones)
+├── python_env.yaml       <- Entorno del MLflow Project: Python 3.12 y `-r requirements.txt` (sin repetir versiones)
 ├── README.md             <- Este documento
 ├── pyproject.toml        <- Metadatos del paquete `mibici`, plugin de MLflow (experimento por pregunta) y configuración de Ruff
 ├── requirements.txt      <- Dependencias con versión fija para reproducir el entorno
@@ -938,7 +938,7 @@ avisa al equipo antes de reescribir nada.
 
 El código sigue **[PEP 8](https://peps.python.org/pep-0008/)**, verificado automáticamente con
 **[Ruff](https://docs.astral.sh/ruff/)**, que ya viene configurado en
-[`pyproject.toml`](pyproject.toml). El proyecto requiere **Python 3.10 o superior**
+[`pyproject.toml`](pyproject.toml). El proyecto requiere **Python 3.12**
 (`requires-python` en `pyproject.toml`).
 
 ### 1. Formateo automático
@@ -1125,10 +1125,15 @@ Al ejecutar un análisis con `bandit` en el proyecto, no se encontro ninguna pru
 
 ### Análisis de dependencias
 
-Utilizando el paquete de `pip-audit`, se realiza una auditoria de los paquetes en el proyecto. Se reporta una lista de vulnerabilidades conocidas de los paquetes utilizadas.
+Utilizando el paquete `pip-audit`, se realiza una auditoría de los paquetes del proyecto contra
+las bases de avisos de seguridad de PyPI y OSV. Se reporta una lista de vulnerabilidades
+conocidas de los paquetes utilizados, con el identificador del aviso y la versión que lo corrige.
 
-El comportamiento por default es analizar los paquetes instalados en el ambiente donde se esta ejecutando el proyecto, pero puede seleccionarse la opción de analizar los paquetes definidos en el archivo de requerimientos del proyecto.
-En este caso se optó por utilizar ambos análisis. A continuación se muestra como utilizar el paquete para analizar los paquetes del proyecto y generar reportes de riesgos:
+El comportamiento por defecto es analizar los paquetes instalados en el ambiente donde se está
+ejecutando el proyecto, pero puede seleccionarse la opción de analizar los paquetes definidos en
+el archivo de requerimientos del proyecto. En este caso se optó por utilizar ambos análisis. A
+continuación se muestra cómo utilizar el paquete para analizar los paquetes del proyecto y
+generar reportes de riesgos (la carpeta `security/` excluye los reportes de Git):
 
 Análisis de los paquetes instalados en el ambiente del proyecto:
 ``` bash
@@ -1137,8 +1142,57 @@ pip-audit -f markdown -o ./security/pip_audit_env_report.md
 
 Análisis de los paquetes definidos en el archivo de requerimientos:
 ``` bash
-pip-audit -r requirements -f markdown -o ./security/pip_audit_req_report.md
+pip-audit -r requirements.txt -f markdown -o ./security/pip_audit_req_report.md
 ```
+
+#### Resultado de la auditoría y acciones tomadas
+
+Auditoría de `requirements.txt` con `pip-audit 2.10.1` (1 de noviembre de 2026):
+
+| `pip-audit -r requirements.txt` | Antes (`main`, Python 3.10) | Después (este cambio, Python 3.12) |
+|---|---|---|
+| Vulnerabilidades conocidas | 139 | 3 (2 identificadores) |
+| Paquetes afectados | 12 | 1 (`setuptools`) |
+
+**Versiones actualizadas.** Se subió cada paquete directo a la versión más baja que `pip-audit`
+reporta como corregida; `mlflow` a la misma versión que el servidor del equipo
+([`infra/main.bicepparam`](infra/main.bicepparam)). Las transitivas con avisos se fijan
+explícitamente en el bloque *Dependencias transitivas fijadas por vulnerabilidades conocidas*
+de `requirements.txt`:
+
+| Paquete | Antes | Después | Avisos corregidos | Nota |
+|---|---|---|---|---|
+| `mlflow` | 3.4.0 | 3.17.2 | 51 | directa; cliente y servidor comparten versión |
+| `pillow` | 12.3.0 | 13.0.0 | 39 | transitiva de `matplotlib` |
+| `filelock` | 4.1.0 | 4.2.1 | 17 | transitiva de `pip-audit` (`cachecontrol[filecache]`) |
+| `cryptography` | 45.0.7 | 50.0.0 | 13 | transitiva de `mlflow` (`< 51`) |
+| `tornado` | 6.5.10 | 6.6 | 3 | transitiva de `deepchecks` (`ipykernel`) |
+| `requests` | 2.32.5 | 2.33.0 | 2 | directa |
+| `pyarrow` | 21.0.0 | 23.0.1 | 2 | directa |
+| `python-dotenv` | 1.1.1 | 1.2.2 | 2 | directa |
+| `fastmcp`, `diskcache`, `dnspython` | 2.14.7, 5.6.3, 2.8.0 | — | 7 | dejan de instalarse: `mlflow` 3.17.2 solo las trae con el extra `mlflow[mcp]` |
+
+El proyecto pasó de Python 3.10 a **Python 3.12** (`python_env.yaml`, `pyproject.toml`,
+`Makefile`) porque las versiones corregidas de `pillow`, `filelock` y `tornado` requieren
+Python ≥ 3.11; quien ya tenga un entorno virtual debe recrearlo con 3.12.
+
+`sqlalchemy==2.0.55` y `alembic==1.20.0` se conservan: `mlflow` 3.17.2 pide `sqlalchemy<3,>=1.4`
+y `alembic<2`, no tienen avisos y son las versiones con las que se creó `mlflow.db`.
+
+Cambio de comportamiento que exigió tocar código: en MLflow 3.17 el formato por defecto de
+`mlflow.sklearn.log_model` pasó de `cloudpickle` a `skops`, que rechaza los estimadores propios
+del proyecto (`baselines.py`, `thresholds.py`); `train.py` fija `serialization_format="cloudpickle"`,
+el formato que ya usaban los modelos registrados.
+
+**Riesgos aceptados.** Queda un solo paquete sin actualizar; se revisa en cada auditoría:
+
+| Paquete | Versión | Avisos | Corregido en | Por qué se acepta |
+|---|---|---|---|---|
+| `setuptools` | 80.9.0 | 3 entradas, 2 identificadores (`PYSEC-2026-3447`, `GHSA-xmj3-9gf7-h52w`) | 83.0.0 / 84.1.0 | `deepchecks` 0.19.1 (la última versión publicada) importa `pkg_resources`, que `setuptools` ≥ 83 ya no incluye (se comprobó que `import pkg_resources` falla con 83.0.0 y 84.1.0). Los avisos afectan a la construcción de *sdists* en macOS y a la instalación heredada de *wheels* como *eggs* en Windows; el proyecto no hace ninguna de las dos. |
+
+Los identificadores aceptados viven en `security/vulnerabilidades-aceptadas.txt`; `make security`
+y el *workflow* de integración continua los pasan a `pip-audit` como `--ignore-vuln`, de modo
+que la auditoría solo falla ante avisos nuevos.
 
 ## Integrantes y roles
 

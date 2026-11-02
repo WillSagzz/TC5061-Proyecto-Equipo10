@@ -215,7 +215,7 @@ def build_package(
             "nacimiento existen en los CSV crudos y se descartan al procesar."
         ),
         version=version,
-        created=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        created=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         homepage=MIBICI_DATA_PAGE,
         licenses=PACKAGE_LICENSES,
         sources=PACKAGE_SOURCES,
@@ -268,7 +268,7 @@ def snapshot(
     Descubre los enlaces del periodo en el portal, descarga los archivos, los describe, corre
     la limpieza y describe los Parquet. El descriptor resultante entra a main por Pull Request.
     """
-    version = version or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
+    version = version or datetime.datetime.now(datetime.UTC).strftime("%Y-%m")
     logger.info(f"Congelando la versión de datos {version} ({start[:7]} a {end[:7]})")
 
     # 1. Enlaces del periodo y del catálogo, descubiertos en el portal
