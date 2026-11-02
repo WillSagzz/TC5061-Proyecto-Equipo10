@@ -10,9 +10,9 @@ La carpeta `tests/` tiene 123 pruebas en 10 archivos que cubren las funciones cl
 
 ## 2. Validación de datos con DeepChecks
 
-`mibici/validation.py` construye las tablas de modelado de P1, P2 y P3 y les aplica una suite de integridad (columnas constantes, nulos, duplicados, tipos mezclados, correlaciones y fugas de la etiqueta) y, en P1 y P2, una suite *train-test* (solapamiento de fechas y *drift* de variables y etiqueta), con los umbrales de `config.py`. `make check-data` exporta cinco reportes HTML a `reports/deepchecks/`, y `tests/test_data_validation.py` verifica que las suites aprueben con datos correctos y fallen ante columnas faltantes, datos dañados y fugas temporales. La captura se produjo con `make check-data SYNTHETIC=1`, porque los datos crudos no están en la máquina que generó este reporte; con ellos se repite con `make data` y `make check-data`.
+`mibici/validation.py` construye las tablas de modelado de P1, P2 y P3 y les aplica una suite de integridad (columnas constantes, nulos, duplicados, tipos mezclados, correlaciones y fugas de la etiqueta) y, en P1 y P2, una suite *train-test* (solapamiento de fechas y *drift* de variables y etiqueta), con los umbrales de `config.py`. `make check-data` exporta cinco reportes HTML a `reports/deepchecks/`, y `tests/test_data_validation.py` verifica que las suites aprueben con datos correctos y fallen ante columnas faltantes, datos dañados y fugas temporales. La captura es de `make check-data` sobre los datos reales de la versión `2026-11` (8.7 millones de viajes y 484 estaciones, descargados y verificados con `make data`): las cinco suites aprueban, sin fugas temporales ni *drift* por encima de los umbrales entre entrenamiento y prueba.
 
-![Figura 2. Consola de python -m mibici.validation --synthetic: las cinco suites aprueban.](../figuras/deepchecks_01_consola.png)
+![Figura 2. Consola de python -m mibici.validation con los datos reales: las cinco suites aprueban.](../figuras/deepchecks_01_consola.png)
 
 ## 3. Chequeos de seguridad básicos
 
