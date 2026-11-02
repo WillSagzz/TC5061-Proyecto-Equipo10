@@ -1,0 +1,11 @@
+# Remove reports
+# We don't want to expose them in the repository
+*.csv
+*.html
+*.json
+*.txt
+*.xml
+*.yaml
+*.cyclonedx-json
+*.cyclonedx-xml
+*.md

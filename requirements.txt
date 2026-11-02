@@ -35,3 +35,7 @@ PyMuPDF==1.28.2
 pytest==9.2.0
 deepchecks==0.19.1
 setuptools==80.9.0 # deepchecks 0.19.1 necesita pkg_resources, que las versiones nuevas ya no traen
+
+# Chequeos de seguridad
+bandit==1.9.4
+pip_audit==2.10.1

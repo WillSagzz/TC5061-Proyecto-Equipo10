@@ -217,3 +217,12 @@ cython_debug/
 .pypirc
 # Salidas compiladas de las entregas (md/html/pdf generados por docs/entregas/build.py)
 docs/entregas/**/build/
+
+# Credentials files
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+service-account*.json

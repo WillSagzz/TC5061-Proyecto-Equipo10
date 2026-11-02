@@ -1081,6 +1081,65 @@ numero.version-iniciales-descripcion-corta.ipynb
 Por ejemplo, `1.0-gsg-exploracion-descarga.ipynb`. Antes de hacer commit de un notebook,
 limpia sus salidas para que el *diff* sea legible.
 
+## Seguridad del repositorio
+
+### Prácticas de seguridad
+
+Estas son algunas de las prácticas implementadas por el equipo de desarrollo para evitar exponer credenciales, contraseñas, y datos sensibles en el repositorio:
+- Uso de `.gitignore` en la raíz del proyecto para evitar compartir los siguientes tipos de archivos:
+  - `.env`: Archivos de configuración que pueden contener contraseñas, usuarios, llaves API, y otros datos sensibles.
+  - Credenciales: Archivos como `.pem`, `.key`, `.crt`, `.p12`, o `.pfx`. Pues estos son formatos estándar para almacenar certificados o llaves criptográficas.
+  - Credenciales en `json`: Archivos como `credentials.json` o `service-account*.json`. Nombres de archivo comúnes para almacenar credenciales.
+- Archivo `.gitignore` en el folder de reportes de seguridad. Para asegurar que los reportes sobre vulnerabilidades no puedan ser expuestos en el repositorio remoto.
+- Compartir usuarios, contraseñas, o credenciales mediante variables de ambiente o archivos de configuración no rastreados en git. En lugar de agregar estos datos directamente en el código.
+- Habilitar la medida de seguridad de `Secret Protection` en GitHub. Para monitorear constantemente el repositorio y prevenir la exposición de contraseñas y credenciales.
+
+Mediante las exclusiones utilizando `.gitignore` podemos asegurarnos de no exponer credenciales en el repositorio, y mitigar el riesgo de exponer datos sensibles.
+Con las prácticas descritas para los desarrolladores se mitiga el riesgo de exponer contraseñas y datos sensibles.
+Finalmente, con el uso de `Secret Protection` se mitiga en gran medida el riesgo de exponer contraseñas y credenciales.
+
+### Análisis estático de código
+
+Utilizando el paquete de `bandit`, se realiza un análisis estático de código para encontrar vulnerabilidades conocidas. A la vez que este paquete contiene una categoría de búsqueda para contraseñas y credenciales _hardcodeadas_ en los archivos del proyecto.
+
+A continuación se muestra como ejecutar el análisis y producir un reporte de vulnerabilidades. Este comando debe correrse desde la raíz del proyecto:
+
+Para obtener un reporte en formato HTML:
+``` bash
+bandit -f html -o ./security/bandit_report.html -r ./
+```
+
+Para obtener un reporte en formato CSV:
+``` bash
+bandit -f csv -o ./security/bandit_report.csv -r ./
+```
+
+Opcionalmente se puede añadir la bandera de filtrado del nivel de severidad. Para reportar únicamente los riesgos con nivel de severidad alto (high):
+``` bash
+bandit -f html -o ./security/bandit_report.html -lll -r ./
+```
+
+A través de este análisis estático también podemos asegurarnos de no exponer contraseñas en el repositorio. Puesto que el paquete `bandit` cuenta con una categoría de pruebas para detectar contraseñas _harcodeadas_.
+
+Al ejecutar un análisis con `bandit` en el proyecto, no se encontro ninguna prueba fallida de contraseñas _hardcodeadas_ en el reporte. Por lo que podemos asegurar que no es un problema actualmente en el repositorio del proyecto.
+
+### Análisis de dependencias
+
+Utilizando el paquete de `pip-audit`, se realiza una auditoria de los paquetes en el proyecto. Se reporta una lista de vulnerabilidades conocidas de los paquetes utilizadas.
+
+El comportamiento por default es analizar los paquetes instalados en el ambiente donde se esta ejecutando el proyecto, pero puede seleccionarse la opción de analizar los paquetes definidos en el archivo de requerimientos del proyecto.
+En este caso se optó por utilizar ambos análisis. A continuación se muestra como utilizar el paquete para analizar los paquetes del proyecto y generar reportes de riesgos:
+
+Análisis de los paquetes instalados en el ambiente del proyecto:
+``` bash
+pip-audit -f markdown -o ./security/pip_audit_env_report.md
+```
+
+Análisis de los paquetes definidos en el archivo de requerimientos:
+``` bash
+pip-audit -r requirements -f markdown -o ./security/pip_audit_req_report.md
+```
+
 ## Integrantes y roles
 
 Los roles siguen los perfiles de un equipo de MLOps que describen Treveil et al. (2020,
