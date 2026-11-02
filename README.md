@@ -798,40 +798,30 @@ python -m pytest tests/test_dataset.py -v
 ### Evidencia de ejecución de las pruebas y los chequeos de seguridad
 
 Capturas de la última ejecución local de los chequeos (1 de noviembre de 2026, Python 3.12, entorno
-virtual nuevo); el detalle está en el reporte de la Entrega 03
-([`docs/entregas/entrega03/`](docs/entregas/entrega03/), `make entrega03`). Las capturas de terminal
-son renders del texto real que imprimió cada comando. Las de DeepChecks se produjeron con el generador
-sintético (`make check-data SYNTHETIC=1`); con los datos reales se repiten con `make data` y
-`make check-data`. GitHub Actions conserva además la ejecución de los mismos chequeos en cada PR
-([Integración continua](#integración-continua)).
+virtual nuevo); las de terminal son renders del texto real que imprimió cada comando y la de
+DeepChecks usa el generador sintético (`make check-data SYNTHETIC=1`). El detalle está en el reporte de
+la Entrega 03 ([`docs/entregas/entrega03/`](docs/entregas/entrega03/), `make entrega03`) y GitHub
+Actions conserva la ejecución de los mismos chequeos en cada PR ([Integración continua](#integración-continua)).
 
 ![make test: 123 pruebas aprobadas](docs/entregas/entrega03/figuras/pytest_01_resumen.png)
 
-*`make test` (`python -m pytest -v`): las 123 pruebas de `tests/` aprobadas.*
+*`make test`: las 123 pruebas de `tests/` aprobadas.*
 
 ![make check-data SYNTHETIC=1: las cinco suites de DeepChecks aprueban](docs/entregas/entrega03/figuras/deepchecks_01_consola.png)
 
 *`make check-data SYNTHETIC=1`: las cinco suites de DeepChecks aprueban y se exportan los reportes HTML.*
 
-![Reporte p1_train_test_drift.html de DeepChecks](docs/entregas/entrega03/figuras/deepchecks_02_reporte_p1_drift.png)
-
-*Reporte `reports/deepchecks/p1_train_test_drift.html`: fugas temporales y drift entre entrenamiento y prueba de P1.*
-
 ![bandit: No issues identified](docs/entregas/entrega03/figuras/bandit_01_resultado.png)
 
-*`bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests`: 0 hallazgos.*
+*`bandit` sobre el código del proyecto: 0 hallazgos.*
 
-![pip-audit antes: 139 vulnerabilidades en 12 paquetes](docs/entregas/entrega03/figuras/pip_audit_01_antes.png)
+![pip-audit: No known vulnerabilities found](docs/entregas/entrega03/figuras/pip_audit_02_despues.png)
 
-*`pip-audit -r requirements.txt` sobre el `requirements.txt` anterior a la actualización: 139 vulnerabilidades conocidas en 12 paquetes.*
-
-![pip-audit después: No known vulnerabilities found](docs/entregas/entrega03/figuras/pip_audit_02_despues.png)
-
-*`pip-audit -r requirements.txt` con las versiones actuales y los avisos aceptados omitidos: sin vulnerabilidades conocidas.*
+*`pip-audit -r requirements.txt` con los avisos aceptados omitidos: sin vulnerabilidades conocidas.*
 
 ![Pestaña Checks de un Pull Request](docs/entregas/entrega03/figuras/github_02_checks_pr30.png)
 
-*Pestaña Checks del PR #30: los jobs `ruff`, `pytest`, `bandit` y `pip-audit` del workflow `checks`, en verde.*
+*Pestaña Checks del PR #30: los cuatro jobs del workflow `checks` en verde.*
 
 ## Buenas prácticas y dónde se verifican
 
