@@ -414,6 +414,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make check` | `make lint test security` | **Todos los chequeos con un solo comando**: estilo, pruebas automatizadas y seguridad. Es lo mismo que ejecuta GitHub Actions en cada PR ([Integración continua](#integración-continua)). |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
+| `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
 
 ## Reproducir con el MLflow Project
 
@@ -695,7 +696,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── docs
 │   ├── entregas          <- Fuente de los PDF de cada entrega y el compilador `build.py`
 │   │   ├── entrega01     <- Propuesta: secciones en Markdown, figuras y capturas de MLflow
-│   │   └── entrega02     <- Reporte de experimentos con MLflow: secciones en Markdown y capturas
+│   │   ├── entrega02     <- Reporte de experimentos con MLflow: secciones en Markdown y capturas
+│   │   └── entrega03     <- Reporte de pruebas y chequeos de seguridad: secciones en Markdown y capturas de evidencia
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
 ├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
@@ -792,6 +794,44 @@ Para correr un solo archivo:
 ```bash
 python -m pytest tests/test_dataset.py -v
 ```
+
+### Evidencia de ejecución de las pruebas y los chequeos de seguridad
+
+Capturas de la última ejecución local de los chequeos (1 de noviembre de 2026, Python 3.12, entorno
+virtual nuevo); el detalle está en el reporte de la Entrega 03
+([`docs/entregas/entrega03/`](docs/entregas/entrega03/), `make entrega03`). Las capturas de terminal
+son renders del texto real que imprimió cada comando. Las de DeepChecks se produjeron con el generador
+sintético (`make check-data SYNTHETIC=1`); con los datos reales se repiten con `make data` y
+`make check-data`. GitHub Actions conserva además la ejecución de los mismos chequeos en cada PR
+([Integración continua](#integración-continua)).
+
+![make test: 123 pruebas aprobadas](docs/entregas/entrega03/figuras/pytest_01_resumen.png)
+
+*`make test` (`python -m pytest -v`): las 123 pruebas de `tests/` aprobadas.*
+
+![make check-data SYNTHETIC=1: las cinco suites de DeepChecks aprueban](docs/entregas/entrega03/figuras/deepchecks_01_consola.png)
+
+*`make check-data SYNTHETIC=1`: las cinco suites de DeepChecks aprueban y se exportan los reportes HTML.*
+
+![Reporte p1_train_test_drift.html de DeepChecks](docs/entregas/entrega03/figuras/deepchecks_02_reporte_p1_drift.png)
+
+*Reporte `reports/deepchecks/p1_train_test_drift.html`: fugas temporales y drift entre entrenamiento y prueba de P1.*
+
+![bandit: No issues identified](docs/entregas/entrega03/figuras/bandit_01_resultado.png)
+
+*`bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests`: 0 hallazgos.*
+
+![pip-audit antes: 139 vulnerabilidades en 12 paquetes](docs/entregas/entrega03/figuras/pip_audit_01_antes.png)
+
+*`pip-audit -r requirements.txt` sobre el `requirements.txt` anterior a la actualización: 139 vulnerabilidades conocidas en 12 paquetes.*
+
+![pip-audit después: No known vulnerabilities found](docs/entregas/entrega03/figuras/pip_audit_02_despues.png)
+
+*`pip-audit -r requirements.txt` con las versiones actuales y los avisos aceptados omitidos: sin vulnerabilidades conocidas.*
+
+![Pestaña Checks de un Pull Request](docs/entregas/entrega03/figuras/github_02_checks_pr30.png)
+
+*Pestaña Checks del PR #30: los jobs `ruff`, `pytest`, `bandit` y `pip-audit` del workflow `checks`, en verde.*
 
 ## Buenas prácticas y dónde se verifican
 
@@ -942,7 +982,7 @@ Se versiona el **código que produce** los datos, los experimentos y los modelos
 | `mlflow.db`, `mlartifacts/`, `mlruns/` | salida de los experimentos; cada *run* lleva el commit y la versión de datos con que se reproduce |
 | `*.pkl`, `*.pickle`, `*.joblib` | modelos serializados; se regeneran con `make train` |
 | `.env` y cualquier credencial | nunca deben salir del equipo local |
-| `docs/entregas/**/build/` | salidas compiladas de las entregas; se regeneran con `make entrega01` y `make entrega02` |
+| `docs/entregas/**/build/` | salidas compiladas de las entregas; se regeneran con `make entrega01`, `make entrega02` y `make entrega03` |
 
 Si algo de esto llega a `main`, borrarlo en un commit posterior **no** lo quita del historial:
 avisa al equipo antes de reescribir nada.
