@@ -171,6 +171,12 @@ entrega02:
 	$(PYTHON_INTERPRETER) docs/entregas/build.py docs/entregas/entrega02
 
 
+## Compile Entrega 03 (Markdown -> HTML -> PDF) into docs/entregas/entrega03/build/
+.PHONY: entrega03
+entrega03:
+	$(PYTHON_INTERPRETER) docs/entregas/build.py docs/entregas/entrega03
+
+
 #################################################################################
 # SERVIDOR MLFLOW COMPARTIDO EN AZURE (infra/README.md)                         #
 #################################################################################
