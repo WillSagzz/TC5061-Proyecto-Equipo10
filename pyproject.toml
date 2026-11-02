@@ -34,6 +34,23 @@ extend-select = ["I"]  # Add import sorting
 known-first-party = ["mibici"]
 force-sort-within-sections = true
 
+# Análisis estático de seguridad: `make security` ejecuta `bandit -c pyproject.toml -r ...`
+# sobre mibici, infra/scripts, docs/entregas/build.py y tests (los mismos paths que el workflow
+# de GitHub Actions). Estas exclusiones protegen a quien corre `bandit -c pyproject.toml -r .`
+# desde la raíz: bandit ignora .gitignore y escanearía los miles de archivos de site-packages.
+[tool.bandit]
+exclude_dirs = [
+    "*/.venv/*",                 # entorno virtual recomendado en el README
+    "*/venv/*",                  # entornos virtuales con otro nombre
+    "*/notebooks/*",             # exploración; la lógica final vive en mibici/
+    "*/docs/entregas/*/build/*", # salidas compiladas de las entregas (ignoradas por Git)
+]
+
+# B101: los `assert` son la forma normal de verificar en PyTest, así que no se reportan en tests/.
+# En el resto del código sí cuentan (python -O los elimina), de ahí el cambio en check_server.py.
+[tool.bandit.assert_used]
+skips = ["tests/*", "*/tests/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
