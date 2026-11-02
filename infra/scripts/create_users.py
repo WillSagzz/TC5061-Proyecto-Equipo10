@@ -16,7 +16,7 @@ Lo ejecuta ``make infra-users`` con las credenciales de ``admin``.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 import secrets
@@ -68,7 +68,7 @@ def read_users(path: Path) -> dict[str, str]:
 
 def save_password(path: Path, username: str, password: str) -> None:
     """Anexa la contraseña al archivo local en cuanto el servidor la acepta."""
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with path.open("a", encoding="utf-8") as handle:
         handle.write(f"{username}={password}  # generada el {stamp}; NO entra a Git\n")
 
