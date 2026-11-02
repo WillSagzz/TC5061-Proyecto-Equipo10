@@ -34,16 +34,17 @@ PyMuPDF==1.28.2
 # Pruebas y validación de calidad
 pytest==9.2.0
 deepchecks==0.19.1
-# deepchecks 0.19.1 necesita pkg_resources, que setuptools >= 83 ya no trae: se mantiene 80.9.0 y se
-# aceptan sus avisos de pip-audit (ver README, "Análisis de dependencias")
+# deepchecks importa pkg_resources, que las versiones recientes de setuptools ya no incluyen; por eso
+# setuptools se queda en una versión anterior (riesgo aceptado, ver README > Análisis de dependencias)
 setuptools==80.9.0
 
 # Chequeos de seguridad
 bandit==1.9.4
 pip_audit==2.10.1
 
-# Dependencias transitivas fijadas por vulnerabilidades conocidas (pip-audit)
-cryptography==50.0.0  # la requiere mlflow (< 51); corrige los 13 avisos de la 45.0.7
-pillow==13.0.0  # la requiere matplotlib; corrige 39 avisos de la 12.3.0 (necesita Python >= 3.11)
-filelock==4.2.1  # la requiere pip-audit (cachecontrol); corrige 17 avisos de la 4.1.0 (Python >= 3.11)
-tornado==6.6  # la requiere deepchecks (ipykernel); corrige 3 avisos de la 6.5.10 (Python >= 3.11)
+# Dependencias transitivas (las instalan los paquetes de arriba) fijadas aquí para que pip tome una
+# versión sin vulnerabilidades conocidas; `make security` las revisa con pip-audit
+cryptography==50.0.0  # la usa mlflow
+pillow==13.0.0  # la usa matplotlib
+filelock==4.2.1  # la usa pip-audit
+tornado==6.6  # la usa deepchecks
