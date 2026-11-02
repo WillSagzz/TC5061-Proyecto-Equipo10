@@ -9,6 +9,11 @@ PYTHON_INTERPRETER = python
 # --env-manager local: usa el entorno activado (el gestor por defecto necesita pyenv)
 MLFLOW_RUN = mlflow run . --env-manager local
 
+# Código que analiza bandit (make security); la configuración vive en pyproject.toml [tool.bandit].
+# Si cambias esta lista, actualiza también .github/workflows/checks.yml.
+BANDIT_TARGETS = mibici infra/scripts docs/entregas/build.py tests
+BANDIT = $(PYTHON_INTERPRETER) -m bandit -c pyproject.toml -r $(BANDIT_TARGETS)
+
 # Servidor MLflow compartido en Azure (infra/). Solo lo usa quien administra la suscripción.
 AZ_RG = rg-mibici-equipo10
 AZ_LOCATION = mexicocentral
@@ -96,6 +101,26 @@ check-data:
 .PHONY: test
 test:
 	$(PYTHON_INTERPRETER) -m pytest -v
+
+## Run bandit (static security analysis) and pip-audit (known vulnerabilities in requirements.txt)
+.PHONY: security
+security:
+	$(BANDIT)
+	$(PYTHON_INTERPRETER) -m pip_audit -r requirements.txt
+
+# pip-audit termina con error si hay vulnerabilidades; en este objetivo interesa escribir los
+# reportes, por eso el guion inicial de sus dos líneas. Para fallar ante vulnerabilidades: make security.
+## Write the security reports into security/ (bandit HTML and CSV, pip-audit Markdown)
+.PHONY: security-report
+security-report:
+	$(BANDIT) -f html -o security/bandit_report.html
+	$(BANDIT) -f csv -o security/bandit_report.csv
+	-$(PYTHON_INTERPRETER) -m pip_audit -f markdown -o security/pip_audit_env_report.md
+	-$(PYTHON_INTERPRETER) -m pip_audit -r requirements.txt -f markdown -o security/pip_audit_req_report.md
+
+## Run every check with one command: lint, tests and security scans
+.PHONY: check
+check: lint test security
 
 ## Train the baseline of each question through the MLflow Project (one run per question)
 .PHONY: baselines
