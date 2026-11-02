@@ -71,11 +71,18 @@ def main() -> None:
 
     client = mlflow.MlflowClient()
     stored = client.get_run(run_id)
-    assert stored.data.params["usuario"] == user
-    assert stored.data.metrics["ok"] == 1.0
+    # Comprobaciones explícitas en lugar de assert: python -O los elimina y el smoke test
+    # dejaría de verificar lo que promete (bandit B101).
+    stored_user = stored.data.params.get("usuario")
+    if stored_user != user:
+        sys.exit(f"ERROR: el parámetro 'usuario' leído ({stored_user!r}) no coincide con {user!r}")
+    stored_ok = stored.data.metrics.get("ok")
+    if stored_ok != 1.0:
+        sys.exit(f"ERROR: la métrica 'ok' leída ({stored_ok!r}) no es 1.0")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(client.download_artifacts(run_id, "saludo.txt", tmp))
-        assert path.read_text(encoding="utf-8").startswith("hola")
+        if not path.read_text(encoding="utf-8").startswith("hola"):
+            sys.exit("ERROR: el artefacto saludo.txt descargado no tiene el contenido esperado")
     print("Artefacto descargado desde Blob a través del servidor. Todo OK.")
 
 
