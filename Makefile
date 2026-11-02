@@ -13,6 +13,11 @@ MLFLOW_RUN = mlflow run . --env-manager local
 # Si cambias esta lista, actualiza también .github/workflows/checks.yml.
 BANDIT_TARGETS = mibici infra/scripts docs/entregas/build.py tests
 BANDIT = $(PYTHON_INTERPRETER) -m bandit -c pyproject.toml -r $(BANDIT_TARGETS)
+# Avisos de pip-audit aceptados por el equipo (security/vulnerabilidades-aceptadas.txt, un
+# identificador por línea con su justificación): se pasan como --ignore-vuln para que la auditoría
+# solo falle ante avisos nuevos. El workflow de GitHub Actions lee el mismo archivo.
+PIP_AUDIT_IGNORE = $(shell grep -o -E '^[A-Z]+-[0-9A-Za-z-]+' security/vulnerabilidades-aceptadas.txt | sed 's/^/--ignore-vuln /')
+PIP_AUDIT = $(PYTHON_INTERPRETER) -m pip_audit -r requirements.txt $(PIP_AUDIT_IGNORE)
 
 # Servidor MLflow compartido en Azure (infra/). Solo lo usa quien administra la suscripción.
 AZ_RG = rg-mibici-equipo10
@@ -106,7 +111,7 @@ test:
 .PHONY: security
 security:
 	$(BANDIT)
-	$(PYTHON_INTERPRETER) -m pip_audit -r requirements.txt
+	$(PIP_AUDIT)
 
 # pip-audit termina con error si hay vulnerabilidades; en este objetivo interesa escribir los
 # reportes, por eso el guion inicial de sus dos líneas. Para fallar ante vulnerabilidades: make security.
@@ -116,7 +121,7 @@ security-report:
 	$(BANDIT) -f html -o security/bandit_report.html
 	$(BANDIT) -f csv -o security/bandit_report.csv
 	-$(PYTHON_INTERPRETER) -m pip_audit -f markdown -o security/pip_audit_env_report.md
-	-$(PYTHON_INTERPRETER) -m pip_audit -r requirements.txt -f markdown -o security/pip_audit_req_report.md
+	-$(PIP_AUDIT) -f markdown -o security/pip_audit_req_report.md
 
 ## Run every check with one command: lint, tests and security scans
 .PHONY: check

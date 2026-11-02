@@ -409,7 +409,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make mlflow-password` | `python infra/scripts/change_password.py` | Cambia tu propia contraseña en el servidor compartido (sin Azure). |
 | `make infra-*` | `az ...` | Despliegue y mantenimiento del servidor en Azure; solo para quien administra la suscripción. Ver [`infra/README.md`](infra/README.md). |
 | `make lint` / `make format` | `ruff format --check && ruff check` / `ruff check --fix && ruff format` | Verifica o corrige el estilo del código. |
-| `make security` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` y `python -m pip_audit -r requirements.txt` | **Chequeos de seguridad.** Análisis estático del código del proyecto con `bandit` (configurado en `pyproject.toml`) y auditoría de vulnerabilidades conocidas en `requirements.txt` con `pip-audit`. Termina con error si alguna herramienta reporta un hallazgo. Ver [Seguridad del repositorio](#seguridad-del-repositorio). |
+| `make security` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` y `python -m pip_audit -r requirements.txt --ignore-vuln ...` | **Chequeos de seguridad.** Análisis estático del código del proyecto con `bandit` (configurado en `pyproject.toml`) y auditoría de vulnerabilidades conocidas en `requirements.txt` con `pip-audit`, omitiendo solo los avisos aceptados y justificados en `security/vulnerabilidades-aceptadas.txt`. Termina con error si alguna herramienta reporta un hallazgo nuevo. Ver [Seguridad del repositorio](#seguridad-del-repositorio). |
 | `make security-report` | los mismos análisis con `-f html`, `-f csv` y `-f markdown` | Escribe los reportes en `security/` (`bandit_report.html`, `bandit_report.csv`, `pip_audit_env_report.md` y `pip_audit_req_report.md`); la carpeta está fuera de Git. |
 | `make check` | `make lint test security` | **Todos los chequeos con un solo comando**: estilo, pruebas automatizadas y seguridad. Es lo mismo que ejecuta GitHub Actions en cada PR ([Integración continua](#integración-continua)). |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
@@ -1167,13 +1167,18 @@ separado en cuatro *jobs* para que la pestaña *Checks* del PR diga de un vistaz
 | `lint` | `ruff format --check` y `ruff check` | Formato y estilo del código (PEP 8). |
 | `test` | `python -m pytest -v` | La suite de `tests/`; trabaja con datos sintéticos, sin descargar los datos de MiBici ni usar `.env`. |
 | `bandit` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` | Análisis estático de seguridad del código del proyecto. |
-| `pip-audit` | `python -m pip_audit -r requirements.txt` | Vulnerabilidades publicadas en las versiones fijadas en `requirements.txt`. |
+| `pip-audit` | `python -m pip_audit -r requirements.txt --ignore-vuln ...` | Vulnerabilidades publicadas en las versiones fijadas en `requirements.txt`, salvo las aceptadas en `security/vulnerabilidades-aceptadas.txt`. |
 
-Todos corren con Python 3.10 (la versión mínima del proyecto) y ninguno usa `continue-on-error`:
-**un job `pip-audit` rojo significa que alguna dependencia tiene una vulnerabilidad publicada y
-hay que subir su versión** en `requirements.txt` (y volver a correr `make check` para confirmar
-que nada se rompe). Los *jobs* no sustituyen la revisión del PR: quien aprueba sigue comprobando
-lo que lista [Pull Requests y revisiones](#5-pull-requests-y-revisiones).
+Todos corren con Python 3.10 (la versión del proyecto) y ninguno usa `continue-on-error`:
+**un job `pip-audit` rojo significa que alguna dependencia tiene una vulnerabilidad publicada
+nueva y hay que subir su versión** en `requirements.txt` (y volver a correr `make check` para
+confirmar que nada se rompe). Los avisos que el equipo ya revisó y aceptó, porque su corrección
+no existe para Python 3.10 o no aplica al proyecto, viven en
+[`security/vulnerabilidades-aceptadas.txt`](security/vulnerabilidades-aceptadas.txt) con su
+justificación; `make security` y el *workflow* leen ese archivo y los pasan a `pip-audit` como
+`--ignore-vuln`. Aceptar un aviso nuevo exige agregarlo ahí, con el motivo, en el mismo PR. Los
+*jobs* no sustituyen la revisión del PR: quien aprueba sigue comprobando lo que lista
+[Pull Requests y revisiones](#5-pull-requests-y-revisiones).
 
 ### Análisis de dependencias
 
