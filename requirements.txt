@@ -44,3 +44,6 @@ pip_audit==2.10.1
 
 # Dependencias transitivas fijadas por vulnerabilidades conocidas (pip-audit)
 cryptography==50.0.0  # la requiere mlflow (< 51); corrige los 13 avisos de la 45.0.7
+pillow==13.0.0  # la requiere matplotlib; corrige 39 avisos de la 12.3.0 (necesita Python >= 3.11)
+filelock==4.2.1  # la requiere pip-audit (cachecontrol); corrige 17 avisos de la 4.1.0 (Python >= 3.11)
+tornado==6.6  # la requiere deepchecks (ipykernel); corrige 3 avisos de la 6.5.10 (Python >= 3.11)
