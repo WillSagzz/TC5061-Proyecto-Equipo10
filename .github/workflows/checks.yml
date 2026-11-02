@@ -1,0 +1,81 @@
+# Chequeos del repositorio en GitHub Actions: estilo, pruebas y seguridad.
+#
+# Corre en cada pull request y en cada push a main. Son los mismos comandos que `make check`
+# ejecuta en local (lint, test y security), separados en un job por herramienta para que la
+# pestaña Checks del PR diga de un vistazo qué falló. Ningún job usa continue-on-error: un
+# job rojo de pip-audit significa que alguna dependencia de requirements.txt tiene una
+# vulnerabilidad publicada y hay que actualizarla.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# El workflow solo lee el repositorio; no necesita escribir nada.
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  lint:
+    name: ruff (formato y lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+      - name: Verificar formato
+        run: ruff format --check
+      - name: Verificar lint
+        run: ruff check
+
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+      # La suite trabaja con datos sintéticos: no descarga los CSV de MiBici ni usa .env.
+      - name: Ejecutar las pruebas
+        run: python -m pytest -v
+
+  bandit:
+    name: bandit (análisis estático de seguridad)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+      # Mismos paths que BANDIT_TARGETS en el Makefile; la configuración está en pyproject.toml.
+      - name: Analizar el código del proyecto
+        run: python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests
+
+  pip-audit:
+    name: pip-audit (vulnerabilidades en dependencias)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+      - name: Auditar requirements.txt
+        run: python -m pip_audit -r requirements.txt
