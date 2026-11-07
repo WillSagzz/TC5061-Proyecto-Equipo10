@@ -692,6 +692,142 @@ python -m mibici.modeling.registry check --question all
 # Descargar un modelo registrado hacia models/registry/ para empaquetarlo
 python -m mibici.modeling.registry download --question p1
 ```
+## API REST de predicción
+
+`mibici/api.py` sirve los tres modelos registrados (`mibici-equipo10-p1-demanda`, `-p2-riesgo`
+y `-p3-grupos`, con el alias `champion`) como una API REST con FastAPI. Al iniciar, carga los
+tres modelos una sola vez desde el Model Registry con `get_registered_model` y los deja en
+memoria; si alguno no se puede recuperar, el servicio no arranca. Las entradas y las salidas
+se validan con los esquemas de `schemas.py`: una petición inválida responde con el código 422
+y el motivo, sin llegar al modelo.
+
+| Método y ruta | Qué hace |
+|---|---|
+| `GET /health` | Indica que el servicio está activo y qué modelos responden (nombre, URI, alias, origen y tipo) |
+| `POST /predict/p1` | **P1 · Demanda:** recibe las 10 variables de una estación y una hora y devuelve los viajes pronosticados |
+| `POST /predict/p2` | **P2 · Riesgo:** recibe las 13 variables de una estación y un intervalo de 3 horas y devuelve si tiende a vaciarse, a llenarse o no tiene riesgo, con la probabilidad de cada clase |
+| `POST /predict/p3` | **P3 · Grupos:** recibe las 8 variables del perfil de uso de una estación y devuelve su grupo |
+| `GET /docs` | Documentación interactiva generada por FastAPI para probar los endpoints desde el navegador |
+
+**Levantar la API en local**, con el entorno activado y el `.env` del servidor de MLflow:
+
+```bash
+uvicorn mibici.api:app --reload
+```
+
+Cuando la terminal muestre `Uvicorn running on http://127.0.0.1:8000`, la API está lista:
+
+- **<http://127.0.0.1:8000/docs>**: documentación interactiva. Cada endpoint trae un ejemplo
+  válido; se prueba con **Try it out** → **Execute**.
+- **<http://127.0.0.1:8000/health>**: comprobación rápida de que el servicio responde.
+
+La API se apaga con `Ctrl + C` en la terminal. Para servir otras versiones registradas se
+define `MIBICI_MODEL_ALIAS` (por ejemplo, `challenger`) antes de levantarla.
+
+**Ejemplo de petición a P1** (curl en macOS, Linux o Git Bash):
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict/p1 \
+  -H "Content-Type: application/json" \
+  -d '{"station_id": 50, "hour_of_day": 8, "day_of_week": 1, "is_weekend": 0, "capacity": 20,
+       "departures_lag_24": 14.0, "departures_lag_168": 12.0, "arrivals_lag_24": 10.0,
+       "net_flow_lag_24": -4.0, "departures_mean_3_lag_24": 11.33}'
+```
+
+En PowerShell:
+
+```powershell
+$body = @{
+    station_id = 50; hour_of_day = 8; day_of_week = 1; is_weekend = 0; capacity = 20
+    departures_lag_24 = 14.0; departures_lag_168 = 12.0; arrivals_lag_24 = 10.0
+    net_flow_lag_24 = -4.0; departures_mean_3_lag_24 = 11.33
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/predict/p1 `
+    -ContentType "application/json" -Body $body
+```
+
+**Respuesta de P1** (200):
+
+```json
+{
+  "question": "p1",
+  "station_id": 50,
+  "hour_of_day": 8,
+  "departures_pred": 11.8901,
+  "model_name": "mibici-equipo10-p1-demanda",
+  "model_uri": "models:/mibici-equipo10-p1-demanda@champion",
+  "estimator_type": "HistGradientBoostingRegressor"
+}
+```
+
+**Petición a P2** (`POST /predict/p2`):
+
+```json
+{
+  "station_id": 50, "interval_of_day": 2, "day_of_week": 1, "is_weekend": 0, "capacity": 20,
+  "departures_lag_1": 8.0, "departures_lag_8": 25.0, "departures_lag_56": 22.0,
+  "arrivals_lag_1": 5.0, "arrivals_lag_8": 14.0, "net_flow_lag_1": -3.0,
+  "net_flow_lag_8": -11.0, "departures_mean_3": 9.67
+}
+```
+
+**Respuesta de P2** (200). La clase se decide con los umbrales de alerta elegidos con
+validación: solo se alerta `vaciarse` o `llenarse` si su probabilidad supera su umbral. En
+este ejemplo la probabilidad de vaciarse (0.97) lo supera:
+
+```json
+{
+  "question": "p2",
+  "station_id": 50,
+  "interval_of_day": 2,
+  "risk_pred": "vaciarse",
+  "probabilities": {
+    "llenarse": 0.004677,
+    "sin_riesgo": 0.028455,
+    "vaciarse": 0.966868
+  },
+  "model_name": "mibici-equipo10-p2-riesgo",
+  "model_uri": "models:/mibici-equipo10-p2-riesgo@champion",
+  "estimator_type": "ThresholdClassifier(HistGradientBoostingClassifier)"
+}
+```
+
+**Petición a P3** (`POST /predict/p3`):
+
+```json
+{
+  "morning_pct": 35.0, "midday_pct": 25.0, "afternoon_pct": 28.0, "night_pct": 12.0,
+  "weekdays_pct": 78.5, "log_daily_use_per_dock": 1.42,
+  "balance_morning": -0.25, "balance_afternoon": 0.22
+}
+```
+
+**Respuesta de P3** (200):
+
+```json
+{
+  "question": "p3",
+  "group": 2,
+  "model_name": "mibici-equipo10-p3-grupos",
+  "model_uri": "models:/mibici-equipo10-p3-grupos@champion",
+  "estimator_type": "Pipeline"
+}
+```
+
+**Respuesta a una petición inválida** (422), por ejemplo P1 con `"hour_of_day": 3`:
+
+```json
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": ["body", "hour_of_day"],
+      "msg": "Value error, La hora 3:00 pertenece al horario sin servicio ([1, 2, 3, 4]); P1 solo pronostica horas de servicio activas.",
+      "input": 3
+    }
+  ]
+}
+```
 
 ## Estructura del proyecto
 
@@ -745,6 +881,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 └── mibici                <- Código fuente del proyecto
     ├── __init__.py       <- Hace de `mibici` un paquete de Python
+    ├── api.py            <- API REST con FastAPI: /health y /predict/p1, /predict/p2 y /predict/p3
     ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
     ├── dataset.py        <- Ingesta reproducible: descarga y verifica contra el descriptor, normaliza, limpia y guarda en Parquet
     ├── datapackage.py    <- Versión de los datos: `snapshot` escribe datapackage.json y `validate` lo comprueba con frictionless
@@ -816,6 +953,7 @@ cada una de sus reglas.
 | `test_data_validation.py` | Suites de DeepChecks de `validation.py` | Las tablas de P1, P2 y P3 pasan las validaciones | Detecta columnas faltantes, datos dañados y fugas temporales |
 | `test_registry.py` | `build_model_uri`, `load_registered_model`, `get_registered_model`, `download_registered_model` | Construye la URI por alias (`@champion`) o versión, recupera los modelos de P1, P2 y P3 con sus variables, reutiliza la instancia en caché en memoria y descarga artefactos con metadatos | Pregunta inexistente o sin alias/versión lanza `ValueError`; si el servidor MLflow falla usa el modelo empaquetado en `models/registry/` y, si tampoco existe en caché local, lanza `ModelRegistryError` |
 | `test_schemas.py` | `P1FeaturesInput`, `P2FeaturesInput`, `P3FeaturesInput` y esquemas de salida | Convierte las entradas validadas al orden exacto de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` y construye las respuestas JSON de predicción | Rechaza horas sin servicio (`1:00` a `4:59`), incoherencias entre `day_of_week` e `is_weekend`, intervalos fuera de `0..7`, probabilidades faltantes o fuera de `[0, 1]`, porcentajes de P3 que no suman 100 %, balances fuera de `[-1, 1]` y columnas extra |
+| `test_api.py` | `GET /health` y `POST /predict/p1`, `/predict/p2` y `/predict/p3` con modelos falsos | `/health` informa los tres modelos; cada endpoint responde 200 con su predicción y pasa las variables al modelo en el orden de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` | Responde 422 sin llegar al modelo ante 13 peticiones inválidas (hora sin servicio o fuera de rango, fin de semana incoherente, viajes negativos, texto en lugar de número, variables faltantes o de más, intervalo fuera de 0..7, capacidad 0, porcentajes de P3 que no suman 100 % y balances fuera de [-1, 1]); una predicción negativa de P1 se devuelve como 0 |
 
 Para correr un solo archivo:
 
