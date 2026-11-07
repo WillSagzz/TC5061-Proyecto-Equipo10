@@ -190,3 +190,18 @@ DEEPCHECKS_MAX_LABEL_DRIFT = 0.25  # umbral máximo de drift en la variable obje
 P1_CATEGORICAL_FEATURES = ["station_id", "hour_of_day", "day_of_week", "is_weekend"]
 P2_CATEGORICAL_FEATURES = ["station_id", "interval_of_day", "day_of_week", "is_weekend"]
 P3_CATEGORICAL_FEATURES: list[str] = []
+
+
+# =============================================================================
+# Servicio API REST y Model Registry
+# =============================================================================
+REGISTERED_MODELS = {
+    "p1": f"mibici-{TEAM}-p1-demanda",
+    "p2": f"mibici-{TEAM}-p2-riesgo",
+    "p3": f"mibici-{TEAM}-p3-grupos",
+}
+DEFAULT_MODEL_ALIAS = os.getenv("MIBICI_MODEL_ALIAS", "champion")
+DEFAULT_SERVING_QUESTION = os.getenv("MIBICI_SERVING_QUESTION", "p1")
+MODEL_REGISTRY_CACHE_DIR = Path(
+    os.getenv("MIBICI_REGISTRY_CACHE_DIR", str(MODELS_DIR / "registry"))
+)
