@@ -404,6 +404,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make run Q=p1 M=ridge P="alpha=10"` | `mlflow run . -e train -P question=p1 -P model=ridge -P alpha=10` | **Un modelo candidato.** `M` es un modelo de `candidates.py` y `P` sus hiperparámetros; sin `M` entrena el *baseline*. |
 | `make search Q=p1 M=hgb` | `mlflow run . -e search -P question=p1 -P model=hgb` | **Búsqueda de hiperparámetros** con *nested runs*: una corrida padre y una hija por combinación de `SEARCH_GRIDS` en `config.py`. |
 | `python -m mibici.modeling.predict p1 --model-name p1_ridge` (o `p2`, `p3`) | — | **Inferencia.** Carga el modelo de `models/` (`p{n}_{modelo}.joblib`), reconstruye la tabla de la pregunta y escribe las predicciones del conjunto de prueba (P1 y P2) o el grupo de cada estación (P3) en `data/processed/`. |
+| `python -m mibici.modeling.registry check --question all` (o `p1`, `p2`, `p3`) | — | **Verificación del Model Registry.** Carga desde MLflow (`models:/<nombre>@champion`) el modelo registrado de cada pregunta y comprueba su estimador y variables; con `download` descarga el artefacto en `models/registry/` para empaquetarlo en contenedor. |
 | `make mlflow-ui` | `mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000` | Levanta el servidor de *tracking* local con base de datos en <http://127.0.0.1:5000>. |
 | `make infra-check` | `python infra/scripts/check_server.py` | **Prueba de conexión** al servidor compartido con las credenciales del `.env`: crea un *run* de prueba con un artefacto y lo vuelve a leer. |
 | `make mlflow-password` | `python infra/scripts/change_password.py` | Cambia tu propia contraseña en el servidor compartido (sin Azure). |
@@ -671,6 +672,27 @@ Debe imprimir `HistGradientBoostingRegressor`, `ThresholdClassifier` y `Pipeline
 `.env` del servidor y el paquete `mibici` instalado: el modelo de P2 usa la clase
 `ThresholdClassifier` de `mibici/modeling/thresholds.py`.
 
+**Estrategia de carga para el servicio de inferencia (`mibici/modeling/registry.py`).** El
+módulo `registry.py` encapsula la recuperación de los modelos registrados (`REGISTERED_MODELS`
+en `config.py`) mediante `load_registered_model` y `get_registered_model`:
+
+1. **Carga desde el Model Registry vía `MLFLOW_TRACKING_URI` (opción principal):** resuelve por
+   defecto el alias `@champion` (`models:/<nombre>@champion`) contra el servidor configurado en
+   `MLFLOW_TRACKING_URI` y mantiene la instancia en caché en memoria para no descargar el
+   artefacto en cada petición HTTP.
+2. **Respaldo local empaquetado (`models/registry/<pregunta>`):** permite descargar previamente
+   el artefacto desde el Model Registry (`download_registered_model`) para empaquetarlo en la
+   imagen del contenedor o iniciar el servicio cuando no se dispone de conexión o credenciales
+   remotas.
+
+```bash
+# Comprobar la carga de los tres modelos @champion desde el Model Registry
+python -m mibici.modeling.registry check --question all
+
+# Descargar un modelo registrado hacia models/registry/ para empaquetarlo
+python -m mibici.modeling.registry download --question p1
+```
+
 ## Estructura del proyecto
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
@@ -717,7 +739,9 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 ├── tests                 <- Pruebas automatizadas con PyTest y DeepChecks
 │   ├── __init__.py
-│   └── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
+│   ├── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
+│   ├── test_registry.py  <- Pruebas del cargador de modelos desde el Model Registry
+│   └── test_schemas.py   <- Pruebas de los esquemas Pydantic de entrada y salida (P1, P2 y P3)
 │
 └── mibici                <- Código fuente del proyecto
     ├── __init__.py       <- Hace de `mibici` un paquete de Python
@@ -727,11 +751,13 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
+    ├── schemas.py        <- Esquemas Pydantic de validación de entradas y salidas para P1, P2 y P3
     ├── validation.py     <- Validación de integridad y drift tabular con DeepChecks (P1, P2 y P3)
     └── modeling
         ├── __init__.py
         ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
         ├── candidates.py <- Catálogo de modelos de cada pregunta (baseline y candidatos)
+        ├── registry.py   <- Carga, caché en memoria y descarga de modelos desde el Model Registry
         ├── thresholds.py <- Umbral de alerta de P2, elegido con validación
         ├── train.py      <- Puntos de entrada `train` y `search`: entrenamiento, búsqueda y registro del run en MLflow
         └── predict.py    <- Inferencia con modelos entrenados
@@ -788,6 +814,8 @@ cada una de sus reglas.
 | `test_baselines.py` | `GroupedDummy`, `build_p1_baseline`, `build_p2_baseline`, `build_p3_baseline` | P1 predice el promedio de cada estación y hora; P2 la clase más frecuente del grupo con sus proporciones; P3 estandariza y agrupa con `KMeans` y la semilla del proyecto | Grupos nuevos usan el promedio o las frecuencias generales; el baseline de regresión no tiene `predict_proba`; la estandarización deja pesar a una variable de 0 a 1 frente a otra de miles |
 | `test_modeling.py` | Reproducibilidad del entrenamiento | Entrenar dos veces con la misma semilla da predicciones y MAE idénticos en P1, los mismos umbrales, predicciones y F1 macro en P2 y las mismas etiquetas y silueta en P3 | — |
 | `test_data_validation.py` | Suites de DeepChecks de `validation.py` | Las tablas de P1, P2 y P3 pasan las validaciones | Detecta columnas faltantes, datos dañados y fugas temporales |
+| `test_registry.py` | `build_model_uri`, `load_registered_model`, `get_registered_model`, `download_registered_model` | Construye la URI por alias (`@champion`) o versión, recupera los modelos de P1, P2 y P3 con sus variables, reutiliza la instancia en caché en memoria y descarga artefactos con metadatos | Pregunta inexistente o sin alias/versión lanza `ValueError`; si el servidor MLflow falla usa el modelo empaquetado en `models/registry/` y, si tampoco existe en caché local, lanza `ModelRegistryError` |
+| `test_schemas.py` | `P1FeaturesInput`, `P2FeaturesInput`, `P3FeaturesInput` y esquemas de salida | Convierte las entradas validadas al orden exacto de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` y construye las respuestas JSON de predicción | Rechaza horas sin servicio (`1:00` a `4:59`), incoherencias entre `day_of_week` e `is_weekend`, intervalos fuera de `0..7`, probabilidades faltantes o fuera de `[0, 1]`, porcentajes de P3 que no suman 100 %, balances fuera de `[-1, 1]` y columnas extra |
 
 Para correr un solo archivo:
 
