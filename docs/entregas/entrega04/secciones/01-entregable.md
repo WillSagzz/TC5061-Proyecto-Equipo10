@@ -107,14 +107,14 @@ El trabajo se repartió en issues (#38 a #41) y cada uno entra a `main` por su p
 |---|---|---|---|
 | [#36](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/36) | feat(modeling): agrega cargador del model registry y esquemas pydantic de validación | Alan Augusto Herrera Sánchez (`alanhsa9`) | — |
 | [#37](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/37) | feat(modeling): sirve los modelos de P1, P2 y P3 con una API REST de FastAPI | Mariely Toribio Rodríguez (`a01797848`) | — |
-| TODO | Containerfile, `.dockerignore` y targets de Make para la imagen Podman de la API | Victor Yoguel Salazar Alanis (`CFOP2357`) | #38 |
+| [#42](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/42) (en revisión) | build(modeling): empaqueta la API REST en una imagen OCI para Podman | Victor Yoguel Salazar Alanis (`CFOP2357`) | #38 |
 | TODO | Resolver la versión del modelo detrás del alias `@champion` y mostrarla en `/health` | Victor Yoguel Salazar Alanis (`CFOP2357`) | #39 |
 | TODO | Documentar en el README el contenedor Podman de la API y la estrategia de despliegue | Guillermo Sáenz González (`WillSagzz`) | #40 |
-| TODO | docs(entregas): agrega la plantilla del reporte de la entrega 04 | Victor Yoguel Salazar Alanis (`CFOP2357`) | #41 |
+| [#43](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/pull/43) (en revisión) | docs(entregas): agrega la plantilla del reporte de la entrega 04 | Victor Yoguel Salazar Alanis (`CFOP2357`) | #41 |
 | TODO | Evidencia de la entrega 04: capturas del contenedor Podman respondiendo | Guillermo Sáenz González (`WillSagzz`) | #41 |
 
 <div class="pendiente">
 
-**TODO (tabla de PR).** Sustituir cada `TODO` por el número y el título definitivo del PR al mezclarse (el título del PR es el mensaje del commit que llega a `main`) y comprobar que la tabla coincide con la pestaña *Pull requests*.
+**TODO (tabla de PR).** Sustituir cada `TODO` por el número y el título definitivo del PR al mezclarse (el título del PR es el mensaje del commit que llega a `main`), quitar las marcas *(en revisión)* y comprobar que la tabla coincide con la pestaña *Pull requests*.
 
 </div>
