@@ -2,9 +2,10 @@
 #
 # Corre en cada pull request y en cada push a main. Son los mismos comandos que `make check`
 # ejecuta en local (lint, test y security), separados en un job por herramienta para que la
-# pestaña Checks del PR diga de un vistazo qué falló. Ningún job usa continue-on-error: un
-# job rojo de pip-audit significa que alguna dependencia de requirements.txt tiene una
-# vulnerabilidad publicada y hay que actualizarla.
+# pestaña Checks del PR diga de un vistazo qué falló, más un job que construye la imagen de la
+# API con Podman (`make image`). Ningún job usa continue-on-error: un job rojo de pip-audit
+# significa que alguna dependencia de requirements.txt tiene una vulnerabilidad publicada y hay
+# que actualizarla.
 name: checks
 
 on:
@@ -84,3 +85,14 @@ jobs:
         run: >-
           python -m pip_audit -r requirements.txt
           $(grep -o -E '^[A-Z]+-[0-9A-Za-z-]+' security/vulnerabilidades-aceptadas.txt | sed 's/^/--ignore-vuln /')
+
+  image:
+    name: podman build (imagen de la API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ubuntu-latest trae Podman preinstalado. Mismo comando que `make image`. Solo construye
+      # la imagen: no ejecuta el contenedor porque al arrancar carga los modelos desde el servidor
+      # MLflow del equipo con las credenciales de .env, y CI no las tiene.
+      - name: Construir la imagen
+        run: podman build -t mibici-api .

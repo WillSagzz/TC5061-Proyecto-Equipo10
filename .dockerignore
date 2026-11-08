@@ -1,0 +1,38 @@
+# Lo que `podman build` no copia al contexto de la imagen (Containerfile). Podman lee este
+# archivo igual que Docker (usa .containerignore si existe y, si no, .dockerignore), así que el
+# mismo archivo sirve para los dos motores. La imagen solo necesita requirements.txt,
+# pyproject.toml, README.md y mibici/; todo lo demás sobra, y las credenciales (.env) nunca
+# deben entrar en ella: se pasan con --env-file al ejecutar.
+
+# Credenciales y entornos virtuales
+.env
+.env.*
+.venv/
+.venv*/
+venv/
+
+# Datos y salida de los experimentos (se reconstruyen con make data y make train)
+data/
+mlflow.db
+mlartifacts/
+mlruns/
+models/
+
+# Documentación, exploración, reportes y pruebas: no forman parte del servicio
+docs/
+notebooks/
+reports/
+references/
+tests/
+
+# Configuración local del agente de IA, Git y GitHub
+.claude/
+.git/
+.github/
+
+# Cachés de Python y de las herramientas de calidad
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
