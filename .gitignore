@@ -17,6 +17,10 @@ infra/users.txt
 *.pickle
 *.joblib
 
+# Modelos descargados del Model Registry con `python -m mibici.modeling.registry download`:
+# se recuperan del servidor MLflow cuando hacen falta, no se versionan
+models/registry/
+
 # Figuras que escribe `make train` en reports/figures: se regeneran y cada run las guarda
 # como artefacto en MLflow; solo se versiona el .gitkeep de la carpeta
 reports/figures/*.png
