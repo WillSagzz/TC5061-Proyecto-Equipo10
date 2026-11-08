@@ -9,6 +9,11 @@ PYTHON_INTERPRETER = python
 # --env-manager local: usa el entorno activado (el gestor por defecto necesita pyenv)
 MLFLOW_RUN = mlflow run . --env-manager local
 
+# Imagen OCI de la API REST (Containerfile). Se construye y ejecuta con Podman; quien tenga
+# otro motor compatible puede cambiarlo al invocar: make image PODMAN=docker
+PODMAN = podman
+IMAGE_NAME = mibici-api
+
 # Código que analiza bandit (make security); la configuración vive en pyproject.toml [tool.bandit].
 # Si cambias esta lista, actualiza también .github/workflows/checks.yml.
 BANDIT_TARGETS = mibici infra/scripts docs/entregas/build.py tests
@@ -158,6 +163,21 @@ search:
 .PHONY: mlflow-ui
 mlflow-ui:
 	mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000
+
+## Serve the REST API locally with auto-reload (http://127.0.0.1:8000/docs); needs the MLflow .env
+.PHONY: api
+api:
+	uvicorn mibici.api:app --reload
+
+## Build the OCI image of the REST API with Podman (Containerfile; .dockerignore trims the context)
+.PHONY: image
+image:
+	$(PODMAN) build -t $(IMAGE_NAME) .
+
+## Run the API image on port 8000 with the MLflow credentials of .env (stop with Ctrl + C)
+.PHONY: container
+container:
+	$(PODMAN) run --rm --env-file .env -p 8000:8000 $(IMAGE_NAME)
 
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01
