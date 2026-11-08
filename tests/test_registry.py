@@ -1,14 +1,21 @@
 """Pruebas unitarias para el cargador de modelos del Model Registry (registry.py).
 
 Verifica la construcción de URIs por alias y versión, la carga desde el Model Registry,
-el respaldo desde caché local empaquetado, el caché en memoria y el manejo de errores,
-sin depender de conexión al servidor remoto de Azure durante la ejecución en CI.
+la resolución de la versión detrás de un alias, el respaldo desde caché local empaquetado
+(también como primera opción cuando no hay ``MLFLOW_TRACKING_URI``), el caché en memoria y
+el manejo de errores, sin depender de conexión al servidor remoto de Azure durante la
+ejecución en CI.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
+from loguru import logger
 import mlflow
 import mlflow.artifacts
 from mlflow.exceptions import MlflowException
@@ -20,6 +27,7 @@ from sklearn.dummy import DummyRegressor
 
 from mibici.config import REGISTERED_MODELS
 from mibici.features import P1_FEATURES, P2_FEATURES, P3_FEATURES
+from mibici.modeling import registry
 from mibici.modeling.registry import (
     ModelRegistryError,
     build_model_uri,
@@ -30,12 +38,61 @@ from mibici.modeling.registry import (
 )
 
 
+def _fake_mlflow_client(
+    version: str | None = None,
+    error: Exception | None = None,
+    calls: list[tuple[str, str]] | None = None,
+) -> type:
+    """Construye un sustituto de ``mlflow.MlflowClient`` para simular la consulta de alias.
+
+    Args:
+        version: Versión que devolverá ``get_model_version_by_alias``.
+        error: Excepción que lanzará la consulta en lugar de responder.
+        calls: Lista donde se anotan los pares ``(nombre, alias)`` consultados.
+    """
+
+    class _FakeClient:
+        def get_model_version_by_alias(self, name: str, alias: str) -> SimpleNamespace:
+            if calls is not None:
+                calls.append((name, alias))
+            if error is not None:
+                raise error
+            return SimpleNamespace(name=name, aliases=[alias], version=version)
+
+    return _FakeClient
+
+
+@contextmanager
+def _capture_logs(level: str) -> Iterator[list[str]]:
+    """Captura los mensajes de loguru de ``level`` o superior emitidos dentro del bloque."""
+    messages: list[str] = []
+    sink_id = logger.add(lambda message: messages.append(message.record["message"]), level=level)
+    try:
+        yield messages
+    finally:
+        logger.remove(sink_id)
+
+
 @pytest.fixture(autouse=True)
 def _reset_cache() -> None:
     """Limpia el caché en memoria antes y después de cada prueba."""
     clear_model_cache()
     yield
     clear_model_cache()
+
+
+@pytest.fixture(autouse=True)
+def _offline_registry_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Evita consultas reales al Model Registry al resolver la versión detrás de un alias.
+
+    Por defecto la consulta falla como si no hubiera servidor; cada prueba que lo necesite
+    sustituye ``mlflow.MlflowClient`` por un doble con la respuesta que quiera simular.
+    """
+    monkeypatch.setattr(
+        mlflow,
+        "MlflowClient",
+        _fake_mlflow_client(error=MlflowException("Model Registry no alcanzable")),
+    )
 
 
 def _save_dummy_mlflow_model(target_dir: Path) -> Path:
@@ -167,3 +224,111 @@ def test_download_registered_model_writes_metadata(
     path = download_registered_model("p1", alias="champion", output_dir=tmp_path)
     assert (path / "MLmodel").exists()
     assert (path / "registry_metadata.json").exists()
+
+
+def test_load_registered_model_resolves_version_behind_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Expone en LoadedModel.version el número de versión que el Registry asigna al alias."""
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(mlflow.sklearn, "load_model", lambda uri: DummyRegressor())
+    monkeypatch.setattr(mlflow, "MlflowClient", _fake_mlflow_client(version="7", calls=calls))
+
+    loaded = load_registered_model("p2", alias="@champion")
+    assert loaded.source == "registry"
+    assert loaded.alias == "champion"
+    assert loaded.version == "7"
+    assert calls == [(REGISTERED_MODELS["p2"], "champion")]
+
+    # Con versión explícita no hay alias que resolver: se conserva la indicada sin consultar.
+    explicit = load_registered_model("p2", version=4)
+    assert explicit.version == "4"
+    assert explicit.alias is None
+    assert len(calls) == 1
+
+
+def test_load_registered_model_tolerates_version_lookup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Caso límite: si get_model_version_by_alias falla, el modelo carga y version es None."""
+    dummy = DummyRegressor()
+    monkeypatch.setattr(mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(mlflow.sklearn, "load_model", lambda uri: dummy)
+    monkeypatch.setattr(
+        mlflow, "MlflowClient", _fake_mlflow_client(error=RuntimeError("alias inexistente"))
+    )
+
+    with _capture_logs("WARNING") as warnings:
+        loaded = load_registered_model("p1", alias="champion")
+    assert loaded.model is dummy
+    assert loaded.source == "registry"
+    assert loaded.version is None
+    assert any("alias inexistente" in message for message in warnings)
+
+
+def test_download_registered_model_writes_resolved_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """registry_metadata.json incluye la versión resuelta para que la caché la informe."""
+
+    def _fake_download(artifact_uri: str, dst_path: str) -> str:
+        target = Path(dst_path)
+        (target / "MLmodel").write_text("artifact_path: modelo\n", encoding="utf-8")
+        return str(target)
+
+    monkeypatch.setattr(mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(mlflow.artifacts, "download_artifacts", _fake_download)
+    monkeypatch.setattr(registry, "_resolve_alias_version", lambda name, alias: "3")
+
+    path = download_registered_model("p3", alias="champion", output_dir=tmp_path)
+    metadata = json.loads((path / "registry_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["model_name"] == REGISTERED_MODELS["p3"]
+    assert metadata["alias"] == "champion"
+    assert metadata["version"] == "3"
+
+
+def test_load_registered_model_uses_cache_first_without_tracking_uri(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Sin MLFLOW_TRACKING_URI y con caché presente, carga la caché sin tocar el Registry."""
+    _save_dummy_mlflow_model(tmp_path / "p1")
+    (tmp_path / "p1" / "registry_metadata.json").write_text(
+        json.dumps({"alias": "champion", "version": "3"}), encoding="utf-8"
+    )
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+
+    requested: list[str] = []
+    real_load = mlflow.sklearn.load_model
+
+    def _record_load(uri: str):
+        requested.append(uri)
+        return real_load(uri)
+
+    monkeypatch.setattr(mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(mlflow.sklearn, "load_model", _record_load)
+
+    with _capture_logs("WARNING") as warnings:
+        loaded = load_registered_model("p1", cache_dir=tmp_path)
+    assert loaded.source == "cache"
+    assert loaded.alias == "champion"
+    assert loaded.version == "3"
+    assert requested == [str(tmp_path / "p1")]
+    assert not any(uri.startswith("models:/") for uri in requested)
+    assert warnings == []
+
+
+def test_load_registered_model_without_tracking_uri_respects_no_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Caso límite: allow_cache_fallback=False sigue obligando a consultar el servidor."""
+    _save_dummy_mlflow_model(tmp_path / "p1")
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+    monkeypatch.setattr(mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(
+        mlflow.sklearn,
+        "load_model",
+        lambda uri: (_ for _ in ()).throw(MlflowException("Sin conexión")),
+    )
+    with pytest.raises(ModelRegistryError, match="No se pudo recuperar el modelo"):
+        load_registered_model("p1", cache_dir=tmp_path, allow_cache_fallback=False)
