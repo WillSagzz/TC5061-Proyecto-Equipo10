@@ -5,6 +5,12 @@ Proporciona las funciones para construir la URI de un modelo registrado por nomb
 (o desde el caché local empaquetado en la imagen del contenedor) y mantenerlo en memoria
 para servir predicciones en la API REST de la Entrega 04.
 
+Al cargar por alias se consulta además qué número de versión tiene ese alias en el Model
+Registry, para que ``LoadedModel.version`` (y con ello ``GET /health``) informe la versión
+exacta que se está sirviendo. Si ``MLFLOW_TRACKING_URI`` no está definida y existe la copia
+empaquetada en ``models/registry/<pregunta>/``, el modelo se carga directamente desde esa
+caché sin intentar antes la base sqlite local.
+
 Uso desde la raíz del repositorio:
 
     python -m mibici.modeling.registry check --question p1
@@ -138,6 +144,34 @@ def _estimator_display_name(model: Any) -> str:
     return name
 
 
+def _resolve_alias_version(model_name: str, alias: str) -> str | None:
+    """Consulta en el Model Registry qué número de versión tiene asignado un alias.
+
+    Usa el servidor de MLflow activo (el fijado con ``mlflow.set_tracking_uri``). Cualquier
+    fallo se registra como aviso y se devuelve ``None``: la versión es informativa y nunca
+    debe impedir la carga del modelo ni el arranque de la API.
+
+    Args:
+        model_name: Nombre del modelo en el Model Registry.
+        alias: Alias registrado (por ejemplo, ``champion``), sin la arroba inicial.
+
+    Returns:
+        Número de versión como cadena (por ejemplo, ``"3"``), o ``None`` si no se pudo resolver.
+    """
+    try:
+        model_version = mlflow.MlflowClient().get_model_version_by_alias(model_name, alias)
+    # Captura amplia a propósito: la versión es solo informativa y la API debe arrancar
+    # aunque el Registry responda con cualquier error (red, permisos, alias inexistente).
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            f"No fue posible resolver la versión del alias '{alias}' de '{model_name}' "
+            f"({exc}); se informará version=None."
+        )
+        return None
+    resolved = getattr(model_version, "version", None)
+    return str(resolved) if resolved is not None else None
+
+
 def _load_from_local_cache(
     question: str,
     model_name: str,
@@ -205,10 +239,19 @@ def load_registered_model(
 ) -> LoadedModel:
     """Recupera un modelo del Model Registry de MLflow por su nombre y alias (o versión).
 
-    Intenta primero cargar el modelo desde el servidor configurado en ``tracking_uri`` (por
-    defecto ``MLFLOW_TRACKING_URI``). Si ocurre un error de conexión o el servidor no está
-    disponible y ``allow_cache_fallback`` es ``True``, intenta cargarlo desde el directorio
-    local ``cache_dir / question`` donde se haya descargado previamente del Registry.
+    El origen del modelo se decide en este orden:
+
+    1. Si ``tracking_uri`` es ``None``, la variable de entorno ``MLFLOW_TRACKING_URI`` no está
+       definida, ``allow_cache_fallback`` es ``True`` y existe ``cache_dir / question /
+       MLmodel``, carga directamente la copia empaquetada (``source="cache"``) sin intentar
+       antes la base sqlite local por defecto. Es el caso del contenedor sin credenciales.
+    2. En caso contrario carga el modelo desde el servidor indicado en ``tracking_uri`` (por
+       defecto ``MLFLOW_TRACKING_URI``). Cuando la carga es por alias, consulta además qué
+       número de versión tiene ese alias en el Model Registry y lo guarda en
+       ``LoadedModel.version``; si la consulta falla, deja un aviso en el log y ``version``
+       queda en ``None`` sin impedir la carga.
+    3. Si el servidor no está disponible y ``allow_cache_fallback`` es ``True``, usa la copia
+       de ``cache_dir / question`` como respaldo y lo avisa en el log.
 
     Args:
         question: Pregunta del proyecto (``p1``, ``p2`` o ``p3``).
@@ -216,8 +259,9 @@ def load_registered_model(
         version: Versión específica del modelo (si se indica, tiene prioridad sobre ``alias``).
         tracking_uri: URI del servidor de MLflow; si es ``None``, usa ``MLFLOW_TRACKING_URI``.
         cache_dir: Carpeta donde se buscan modelos empaquetados descargados del Registry.
-        allow_cache_fallback: Si es ``True``, usa ``cache_dir`` como respaldo cuando falla
-            la conexión al servidor de MLflow.
+        allow_cache_fallback: Si es ``True``, permite usar ``cache_dir`` tanto cuando falta
+            ``MLFLOW_TRACKING_URI`` como cuando falla la conexión al servidor de MLflow. Si es
+            ``False``, siempre se consulta el servidor y la caché nunca se usa.
 
     Returns:
         Instancia de ``LoadedModel`` con el estimador y sus metadatos.
@@ -238,17 +282,36 @@ def load_registered_model(
     )
     model_uri = build_model_uri(normalized, alias=clean_alias, version=clean_version)
 
-    effective_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI") or MLFLOW_TRACKING_URI
+    cache_model_dir = Path(cache_dir) / normalized
+    cache_available = (cache_model_dir / "MLmodel").exists()
+    # Se consulta la variable de entorno y no la constante de config, porque esta última ya
+    # trae la base sqlite local como valor por defecto.
+    env_tracking_uri = os.getenv("MLFLOW_TRACKING_URI") or None
+    if (
+        tracking_uri is None
+        and env_tracking_uri is None
+        and allow_cache_fallback
+        and cache_available
+    ):
+        logger.info(
+            f"[{normalized.upper()}] MLFLOW_TRACKING_URI no está definida; se carga la copia "
+            f"empaquetada en '{cache_model_dir}' sin consultar el Model Registry."
+        )
+        return _load_from_local_cache(
+            normalized, model_name, clean_alias, clean_version, Path(cache_dir)
+        )
+
+    effective_uri = tracking_uri or env_tracking_uri or MLFLOW_TRACKING_URI
     os.environ.setdefault("MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR", "false")
 
     try:
         mlflow.set_tracking_uri(effective_uri)
         loaded = mlflow.sklearn.load_model(model_uri)
     except (MlflowException, OSError, RuntimeError) as exc:
-        if allow_cache_fallback and (Path(cache_dir) / normalized / "MLmodel").exists():
+        if allow_cache_fallback and cache_available:
             logger.warning(
                 f"No fue posible cargar '{model_uri}' desde '{effective_uri}' ({exc}). "
-                f"Usando copia empaquetada en '{Path(cache_dir) / normalized}'."
+                f"Usando copia empaquetada en '{cache_model_dir}'."
             )
             return _load_from_local_cache(
                 normalized, model_name, clean_alias, clean_version, Path(cache_dir)
@@ -260,17 +323,21 @@ def load_registered_model(
     if not hasattr(loaded, "predict"):
         raise ModelRegistryError(f"El modelo '{model_uri}' no tiene un método 'predict' válido.")
 
+    resolved_version = clean_version
+    if resolved_version is None and clean_alias is not None:
+        resolved_version = _resolve_alias_version(model_name, clean_alias)
+
     estimator_type = _estimator_display_name(loaded)
     logger.info(
         f"[{normalized.upper()}] Modelo '{model_uri}' cargado desde Model Registry "
-        f"-> {estimator_type}"
+        f"-> {estimator_type} (versión {resolved_version or 'desconocida'})"
     )
     return LoadedModel(
         question=normalized,
         model_name=model_name,
         model_uri=model_uri,
         alias=clean_alias,
-        version=clean_version,
+        version=resolved_version,
         source="registry",
         estimator_type=estimator_type,
         features=list(QUESTION_FEATURES[normalized]),
@@ -331,7 +398,9 @@ def download_registered_model(
 
     El objetivo es:
     Descargar el artefacto desde el Model Registry de MLflow y empaquetarlo dentro de la
-    imagen del contenedor para que arranque sin depender de credenciales remotas.
+    imagen del contenedor para que arranque sin depender de credenciales remotas. Junto al
+    modelo escribe ``registry_metadata.json`` con el alias y la versión resuelta en el
+    Registry, para que ``_load_from_local_cache`` pueda informarlos.
 
     Args:
         question: Pregunta del proyecto (``p1``, ``p2`` o ``p3``).
@@ -373,17 +442,24 @@ def download_registered_model(
             f"No se pudo descargar '{model_uri}' desde '{effective_uri}': {exc}"
         ) from exc
 
+    resolved_version = clean_version
+    if resolved_version is None and clean_alias is not None:
+        resolved_version = _resolve_alias_version(model_name, clean_alias)
+
     metadata = {
         "question": normalized,
         "model_name": model_name,
         "model_uri": model_uri,
         "alias": clean_alias,
-        "version": clean_version,
+        "version": resolved_version,
     }
     (downloaded / METADATA_FILENAME).write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    logger.success(f"[{normalized.upper()}] Modelo '{model_uri}' descargado en: {downloaded}")
+    logger.success(
+        f"[{normalized.upper()}] Modelo '{model_uri}' "
+        f"(versión {resolved_version or 'desconocida'}) descargado en: {downloaded}"
+    )
     return downloaded
 
 
@@ -406,8 +482,9 @@ def check_command(
             version=version if version else None,
         )
         logger.success(
-            f"[{loaded.question.upper()}] OK · {loaded.model_name} ({loaded.model_uri}) -> "
-            f"{loaded.estimator_type} · {len(loaded.features)} variables ({loaded.source})"
+            f"[{loaded.question.upper()}] OK · {loaded.model_name} ({loaded.model_uri}) · "
+            f"versión {loaded.version or 'desconocida'} -> {loaded.estimator_type} · "
+            f"{len(loaded.features)} variables ({loaded.source})"
         )
 
 
