@@ -23,6 +23,7 @@ alembic==1.20.0
 fastapi==0.162.0
 uvicorn==0.54.0
 pydantic==2.14.3
+httpx==0.28.1  # la usa TestClient de FastAPI en las pruebas de la API (tests/test_api.py)
 
 # Utilidades de la plantilla
 python-dotenv==1.2.2
