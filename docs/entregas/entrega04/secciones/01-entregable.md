@@ -2,11 +2,11 @@
 
 **Repositorio: <https://github.com/WillSagzz/TC5061-Proyecto-Equipo10>.** La API y su contenedor están integrados ahí. Desde un clon limpio, con un entorno virtual de Python y `pip install -r requirements.txt`, `make image` construye la imagen `mibici-api` y `make container` la ejecuta publicando el puerto 8000; solo hace falta el `.env` con las credenciales del servidor de MLflow del equipo, porque los modelos se recuperan del Model Registry al arrancar. No requiere descargar los datos de MiBici ni entrenar nada.
 
-<div class="pendiente">
+<!-- <div class="pendiente">
 
 **TODO (plantilla).** Este documento es la plantilla del reporte. Los pasos 1 a 3 describen lo que ya está en `main`; los pasos 4 a 6 describen el contrato acordado para el contenedor y se confirman cuando se mezclen los PR de los issues #38 (`Containerfile`, `.dockerignore`, `make image` y `make container`), #39 (versión del modelo en `/health`) y #40 (sección del README sobre el contenedor). Las tres capturas y la tabla de PR se completan con el issue #41. Buscar lo que falta con `grep -rn TODO docs/entregas/entrega04/secciones/`; ningún `TODO` ni recuadro naranja debe quedar en el PDF final.
 
-</div>
+</div> -->
 
 ## 1. Recuperación del modelo desde el Model Registry
 
@@ -14,11 +14,11 @@ Los tres modelos en producción están registrados en el Model Registry del serv
 
 **Opción elegida: el modelo vive en el Model Registry y el servicio lo recupera al arrancar mediante la variable `MLFLOW_TRACKING_URI`.** Así el contenedor sirve exactamente la misma versión `@champion` que usa el resto del equipo, promover una versión nueva es mover el alias sin reconstruir la imagen, y ni el repositorio ni la imagen contienen modelos serializados ni credenciales (estas se pasan al ejecutar con `--env-file .env`). Como respaldo, `python -m mibici.modeling.registry download` deja una copia del artefacto en `models/registry/<pregunta>/` (ignorada por Git) que `load_registered_model` usa cuando el servidor no está disponible. La decisión y su justificación están en el README, sección *Model Registry*, apartado *Estrategia de carga para el servicio de inferencia*. Las 7 pruebas de `tests/test_registry.py` cubren la construcción de la URI, la carga por alias y por versión, la caché en memoria y el respaldo local, con el servidor de MLflow simulado.
 
-<div class="pendiente">
+<!-- <div class="pendiente">
 
 **TODO (#39).** Cuando se mezcle el PR del issue #39, indicar aquí que `load_registered_model` resuelve también el número de versión detrás del alias (`get_model_version_by_alias`) y que `GET /health` lo muestra en el campo `version`; hoy ese campo responde `null`.
 
-</div>
+</div> -->
 
 ## 2. API REST con FastAPI
 
@@ -44,11 +44,11 @@ Las salidas también se validan antes de responder: `P1PredictionOutput` exige `
 
 El archivo `Containerfile` en la raíz del repositorio empaqueta la API: parte de una imagen oficial de Python *slim* con la misma versión de Python que `pyproject.toml` y la integración continua, copia `requirements.txt`, `pyproject.toml`, `README.md` y el paquete `mibici/`, instala las dependencias con `pip install --no-cache-dir -r requirements.txt`, cambia a un usuario sin privilegios, expone el puerto 8000 y arranca con `uvicorn mibici.api:app --host 0.0.0.0 --port 8000`. El archivo `.dockerignore` (Podman también lo lee) deja fuera del contexto de construcción el `.env`, el entorno virtual, los datos (`data/`), las salidas de MLflow (`mlflow.db`, `mlartifacts/`, `mlruns/`), los modelos descargados (`models/`), `docs/`, `notebooks/`, `reports/` y `tests/`, de modo que la imagen contiene solo el código y sus dependencias: las credenciales del servidor de MLflow nunca van dentro de la imagen, se pasan al ejecutar con `--env-file .env`. Las dependencias de la API (`fastapi`, `uvicorn`, `pydantic`) están en `requirements.txt` junto con las del resto del proyecto.
 
-<div class="pendiente">
+<!-- <div class="pendiente">
 
 **TODO (#38).** Confirmar este párrafo contra el `Containerfile` y el `.dockerignore` que lleguen a `main` (instrucciones, usuario, puerto y lista de exclusiones) y anotar el tamaño final de la imagen que reporta `podman images mibici-api`.
 
-</div>
+</div> -->
 
 ## 5. Construcción de la imagen y prueba del contenedor
 
@@ -61,29 +61,11 @@ podman run --rm --env-file .env -p 8000:8000 mibici-api         # make container
 
 Al arrancar, el contenedor carga los tres modelos `@champion` desde el servidor de MLflow y el log muestra `API lista con los modelos de P1, P2 y P3`. Desde la máquina anfitriona, `podman ps` lista el contenedor con el puerto `8000->8000` publicado, `curl http://localhost:8000/health` responde 200 con los tres modelos y `POST /predict/p1` con el ejemplo del README (estación 50 a las 8:00 de un martes) responde 200 con los viajes pronosticados. `podman logs` muestra la carga de los modelos y cada predicción, y `podman stop` detiene el contenedor. El *workflow* `.github/workflows/checks.yml` construye la imagen en cada *Pull Request* (job `image`); solo construye, porque la integración continua no tiene las credenciales del servidor.
 
-<div class="pendiente">
+![Figura 1. Final de podman build -t mibici-api .: la imagen mibici-api construida.](../figuras/contenedor_01_build.png)
 
-**TODO (#41, Figura 1).** Captura `figuras/contenedor_01_build.png`: final de `podman build -t mibici-api .` con la imagen creada (que se vea el nombre `mibici-api`). Al guardarla, quitar este recuadro y descomentar la figura.
+![Figura 2. podman ps con el contenedor mibici-api en ejecución y la respuesta de GET /health con los tres modelos.](../figuras/contenedor_02_health.png)
 
-</div>
-
-<!-- ![Figura 1. Final de podman build -t mibici-api .: la imagen mibici-api construida.](../figuras/contenedor_01_build.png) -->
-
-<div class="pendiente">
-
-**TODO (#41, Figura 2).** Captura `figuras/contenedor_02_health.png`: `podman ps` con el contenedor en ejecución (imagen `mibici-api`, puerto `8000->8000`) y la respuesta de `GET /health` con los tres modelos. Al guardarla, quitar este recuadro y descomentar la figura.
-
-</div>
-
-<!-- ![Figura 2. podman ps con el contenedor mibici-api en ejecución y la respuesta de GET /health con los tres modelos.](../figuras/contenedor_02_health.png) -->
-
-<div class="pendiente">
-
-**TODO (#41, Figura 3).** Captura `figuras/contenedor_03_predict_p1.png`: `POST /predict/p1` y su respuesta 200, donde se vea que la petición va al puerto 8000 publicado por el contenedor. Al guardarla, quitar este recuadro, descomentar la figura y copiar aquí el valor de `departures_pred` que devolvió el contenedor.
-
-</div>
-
-<!-- ![Figura 3. POST /predict/p1 al puerto 8000 publicado por el contenedor y su respuesta 200.](../figuras/contenedor_03_predict_p1.png) -->
+![Figura 3. POST /predict/p1 al puerto 8000 publicado por el contenedor y su respuesta 200.](../figuras/contenedor_03_predict_p1.png)
 
 ## 6. Documentación y estrategia de despliegue
 
@@ -91,11 +73,29 @@ El README documenta el servicio completo. La sección *Model Registry* explica d
 
 **Estrategia de despliegue: inferencia en tiempo real vía REST.** P2 (alerta de que una estación tiende a vaciarse o a llenarse en el siguiente intervalo de 3 horas) necesita respuesta bajo demanda, en el momento en que el operador la consulta, por lo que un servicio REST que responda en milisegundos es la opción natural. P1 (pronóstico de salidas por estación y hora del día siguiente) y P3 (perfiles de estaciones, que cambian poco) podrían servirse por lotes en una fase posterior, calculando las predicciones una vez al día; de momento los tres modelos se sirven en el mismo contenedor para mantener un solo punto de despliegue, y la separación en lotes queda como trabajo futuro.
 
-<div class="pendiente">
+<!-- <div class="pendiente">
 
 **TODO (#40).** Confirmar los nombres de las secciones y las filas de la tabla *Comandos* contra el README que llegue a `main`, y copiar aquí la respuesta real de `POST /predict/p1` obtenida desde el contenedor.
 
-</div>
+</div> -->
+
+Request para solicitar una predicción del modelo:
+``` bash
+curl -X POST http://localhost:8000/predict/p1 -H "Content-Type: application/json" -d '{"station_id": 50, "hour_of_day": 8, "day_of_week": 1, "is_weekend": 0, "capacity": 20, "departures_lag_24": 14.0, "departures_lag_168": 12.0, "arrivals_lag_24": 10.0, "net_flow_lag_24": -4.0, "departures_mean_3_lag_24": 11.33}'
+```
+
+Respuesta obtenida:
+``` json
+{
+    "question":"p1",
+    "station_id":50,
+    "hour_of_day":8,
+    "departures_pred":11.8901,
+    "model_name":"mibici-equipo10-p1-demanda",
+    "model_uri":"models:/mibici-equipo10-p1-demanda@champion",
+    "estimator_type":"HistGradientBoostingRegressor"
+}
+```
 
 ## 7. Trabajo colaborativo en Git
 
