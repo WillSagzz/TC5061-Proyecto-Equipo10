@@ -392,7 +392,7 @@ python -m mibici.modeling.predict p1 --model-name p1_ridge   # escribe data/proc
 Todos se ejecutan desde la raíz del repositorio con el entorno activado y sin pasos manuales.
 Las rutas, fechas y semillas salen de `config.py`.
 
-| Comando | Equivalente en Python | Qué hace |
+| Comando | Equivalente en CLI | Qué hace |
 |---|---|---|
 | `make data` | `mlflow run . -e ingest --env-manager local` (ejecuta `python -m mibici.dataset`) | **Ingesta reproducible.** Reconstruye la versión de datos de `datapackage.json`: descarga a `data/raw/` lo que falte, verifica tamaño y hash de cada archivo contra el descriptor, valida una muestra de filas contra el esquema, normaliza, conserva solo las columnas del contrato (sin datos personales), limpia los viajes, escribe `meses.parquet` y `nomenclatura.parquet` en `data/processed/` y comprueba que coinciden con el descriptor. Queda registrada como *run* del experimento `mibici-ingesta`. |
 | `make snapshot VERSION=2026-11` | `python -m mibici.datapackage snapshot --version 2026-11` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
@@ -413,9 +413,13 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make security` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` y `python -m pip_audit -r requirements.txt --ignore-vuln ...` | **Chequeos de seguridad.** Análisis estático del código del proyecto con `bandit` (configurado en `pyproject.toml`) y auditoría de vulnerabilidades conocidas en `requirements.txt` con `pip-audit`, omitiendo solo los avisos aceptados y justificados en `security/vulnerabilidades-aceptadas.txt`. Termina con error si alguna herramienta reporta un hallazgo nuevo. Ver [Seguridad del repositorio](#seguridad-del-repositorio). |
 | `make security-report` | los mismos análisis con `-f html`, `-f csv` y `-f markdown` | Escribe los reportes en `security/` (`bandit_report.html`, `bandit_report.csv`, `pip_audit_env_report.md` y `pip_audit_req_report.md`); la carpeta está fuera de Git. |
 | `make check` | `make lint test security` | **Todos los chequeos con un solo comando**: estilo, pruebas automatizadas y seguridad. Es lo mismo que ejecuta GitHub Actions en cada PR ([Integración continua](#integración-continua)). |
+| `make api` | `uvicorn mibici.api:app --reload` | **Ejecución de API REST local**: se ejecuta un servidor de `FastAPI` en el ambiente donde se este ejecutando el comando. |
+| `make image` | `podman build -t mibici-api .` | **Generar imágen de API**: Construye la imágen que empaqueta la aplicación con todas sus dependencias, a partir de la definición encontrada en el archivo `Containerfile`. |
+| `make container` | `podman run --rm --env-file .env -p 8000:8000 mibici-api` | **Ejecutar el contenedor con la API**: Ejecuta el contenedor de la API a partir de la imágen previamente construida con podman. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
+| `make entrega04` | `python docs/entregas/build.py docs/entregas/entrega04` | Compila el reporte de la API REST (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
 
 ## Reproducir con el MLflow Project
 
@@ -694,6 +698,46 @@ python -m mibici.modeling.registry download --question p1
 ```
 ## API REST de predicción
 
+### Contenedor Podman
+
+Parte de este proyecto involucra el uso de podman para asegurar la compatibilidad con las estaciones de trabajo de los miembros del equipo. Pues esta herramienta no requiere privilegios de _root_ para administrar y ejecutar contenedores.
+
+La definición del contenedor se encuentra en el archivo `Containerfile` en la raíz de este proyecto. Ahi se especifican los siguientes pasos para construir la imágen a partir de la cual correrá el contenedor con la aplicación:
+1. Construir a partir de una imágen slim con la misma versión de Python que exige el archivo `pyproject.toml`
+2. Definir variables de ambiente
+3. Establecer el directorio dentro de la imágen donde se ejecutaran los siguientes pasos
+4. Copiar archivos para instalación de dependencias
+5. Copiar directorio del proyecto
+6. Instalación de dependencias
+7. Crear usuario con permisos para correr el servidor `FastAPI`
+8. Utilizar el usuario que se acaba de crear, para los siguientes pasos
+9. Exponer el puerto de comunicación del servidor `FastAPI`
+10. Comando de `uvicorn` para la ejecución del servidor `FastAPI`
+
+Se puede levantar el contenedor podman con la API REST de FastAPI mediante el uso de dos comandos `make`:
+``` bash
+make image
+make container
+```
+
+Notese que es necesario definir el archivo de configuración `.env` para la correcta ejecución del contenedor.
+
+### Estrategia de despliegue
+
+Se optó por la opción de **inferencia en tiempo real** vía REST.
+
+- P1. Pronóstico de salidas por estación y hora del día siguiente.
+Al ser un calculo requerido para el día siguiente, esta información podría servirse por lotes, y calcularse unicamente una vez por día.
+- P2. Alerta de que una estación tiende a vaciarse o a llenarse en el siguiente intervalo de 3 horas.
+Este caso necesita respuesta bajo demanda, en el momento en que el operador la consulta, por lo que un servicio REST que responda en milisegundos es la opción natural.
+- P3. Perfiles de estaciones.
+Este dato cambia poco. Por lo que podría servirse por lotes en una fase posterior, calculando las predicciones una vez al día
+
+A pesar de que solo el caso de uso P2 requiere información disponible en el momento, los tres modelos se sirven en el mismo contenedor.
+Se tomó esta decisión para mantener un solo punto de despliegue por el momento, y la separación en lotes queda como trabajo futuro.
+
+### API REST
+
 `mibici/api.py` sirve los tres modelos registrados (`mibici-equipo10-p1-demanda`, `-p2-riesgo`
 y `-p3-grupos`, con el alias `champion`) como una API REST con FastAPI. Al iniciar, carga los
 tres modelos una sola vez desde el Model Registry con `get_registered_model` y los deja en
@@ -711,6 +755,11 @@ y el motivo, sin llegar al modelo.
 
 **Levantar la API en local**, con el entorno activado y el `.env` del servidor de MLflow:
 
+``` bash
+make api
+```
+
+También puede utilizarse su equivalente:
 ```bash
 uvicorn mibici.api:app --reload
 ```
