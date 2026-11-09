@@ -79,24 +79,6 @@ El README documenta el servicio completo. La sección *Model Registry* explica d
 
 </div> -->
 
-Request para solicitar una predicción del modelo:
-``` bash
-curl -X POST http://localhost:8000/predict/p1 -H "Content-Type: application/json" -d '{"station_id": 50, "hour_of_day": 8, "day_of_week": 1, "is_weekend": 0, "capacity": 20, "departures_lag_24": 14.0, "departures_lag_168": 12.0, "arrivals_lag_24": 10.0, "net_flow_lag_24": -4.0, "departures_mean_3_lag_24": 11.33}'
-```
-
-Respuesta obtenida:
-``` json
-{
-    "question":"p1",
-    "station_id":50,
-    "hour_of_day":8,
-    "departures_pred":11.8901,
-    "model_name":"mibici-equipo10-p1-demanda",
-    "model_uri":"models:/mibici-equipo10-p1-demanda@champion",
-    "estimator_type":"HistGradientBoostingRegressor"
-}
-```
-
 ## 7. Trabajo colaborativo en Git
 
 El trabajo se repartió en issues (#38 a #41) y cada uno entra a `main` por su propia rama (`feature/issue-NN-...`, `docs/issue-NN-...`) y un *Pull Request* revisado y aprobado por otro integrante, con *squash merge* y mensajes según Conventional Commits; el *workflow* `checks` corre `ruff`, `pytest`, `bandit`, `pip-audit` y la construcción de la imagen en cada PR. La evidencia está en la pestaña *Pull requests* del repositorio.
