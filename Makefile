@@ -106,6 +106,11 @@ validate:
 check-data:
 	$(PYTHON_INTERPRETER) -m mibici.validation $(if $(Q),--question $(Q)) $(if $(SYNTHETIC),--synthetic)
 
+## Download and clean the production month (2026-09) and build reference/current datasets
+.PHONY: monitor-data
+monitor-data:
+	$(PYTHON_INTERPRETER) -m mibici.monitoring prepare --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic)
+
 
 ## Run automated unit and data validation tests with PyTest
 .PHONY: test
