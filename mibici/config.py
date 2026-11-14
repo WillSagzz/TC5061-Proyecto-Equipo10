@@ -205,3 +205,18 @@ DEFAULT_SERVING_QUESTION = os.getenv("MIBICI_SERVING_QUESTION", "p1")
 MODEL_REGISTRY_CACHE_DIR = Path(
     os.getenv("MIBICI_REGISTRY_CACHE_DIR", str(MODELS_DIR / "registry"))
 )
+
+
+# =============================================================================
+# Monitoreo de drift con Evidently y datos de producción (Entrega 05)
+# =============================================================================
+REFERENCE_START = TRAIN_START  # inicio del periodo de referencia (entrenamiento)
+REFERENCE_END = VALIDATION_START  # fin (excluido) del periodo de referencia
+CURRENT_MONTH_DATE = "2026-09-01"  # mes reservado en config.py para monitoreo en producción
+CURRENT_START = CURRENT_MONTH_DATE  # inicio (incluido) del conjunto actual
+CURRENT_END = "2026-10-01"  # fin (excluido) del conjunto actual
+PRODUCTION_TRIPS_PATH = PROCESSED_DATA_DIR / "meses_produccion.parquet"
+
+EVIDENTLY_REPORTS_DIR = REPORTS_DIR / "evidently"
+EVIDENTLY_SAMPLE_SIZE = 50_000  # muestra determinista máxima para reportes de Evidently
+DRIFT_SHARE_THRESHOLD = 0.50  # fracción de variables con drift para declarar drift del conjunto

@@ -398,6 +398,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make snapshot VERSION=2026-11` | `python -m mibici.datapackage snapshot --version 2026-11` | **Versión nueva de los datos.** Descubre los enlaces en el portal, descarga, describe cada archivo, limpia, escribe `datapackage.json` y lo valida. Guía en [Versionado de los datos](#versionado-de-los-datos). |
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
 | `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
+| `make monitor-data` | `python -m mibici.monitoring prepare --question all` | **Conjuntos de monitoreo (Entrega 05).** Descarga y limpia los viajes del mes de producción (`data/processed/meses_produccion.parquet`, septiembre de 2026) y construye las tablas de referencia (entrenamiento, `2024-09` a `2026-02`) y periodo actual (`2026-09`) para P1, P2 y P3. Acepta `SYNTHETIC=1` y `Q=p1` (`p2`, `p3`). |
 | `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
 | `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
@@ -878,6 +879,28 @@ este ejemplo la probabilidad de vaciarse (0.97) lo supera:
 }
 ```
 
+## Monitoreo de datos y preparación para detección de drift
+
+Para vigilar el comportamiento de los modelos en operación sin alterar la partición congelada de las entregas previas (`datapackage.json`), `mibici/monitoring.py` construye los pares de conjuntos `(reference, current)` para P1, P2 y P3:
+
+- **Conjunto de referencia (`2024-09-01` a `2026-03-01`):** los 18 meses del periodo de entrenamiento con el que se ajustaron los modelos registrados como `@champion`.
+- **Conjunto actual en producción (`2026-09-01` a `2026-10-01`):** el mes posterior reservado en `config.py` (`datos_abiertos_2026_09.csv`, 471,643 viajes limpios de 490,056 crudos), almacenado por separado en `data/processed/meses_produccion.parquet`. En P1 y P2 se concatena con el cierre de agosto de 2026 antes de calcular los rezagos para evitar valores `NaN` artificiales en la primera semana de septiembre.
+
+| Pregunta | Variables | Filas de referencia (`2024-09` a `2026-02`) | Filas del periodo actual (`2026-09`) |
+|---|---|---|---|
+| **P1 · Demanda** | 10 (`P1_FEATURES` + `departures`) | 4,005,940 | 280,760 |
+| **P2 · Riesgo** | 13 (`P2_FEATURES` + `risk`) | 1,602,376 | 112,304 |
+| **P3 · Perfiles** | 8 (`P3_FEATURES`) | 371 estaciones | 468 estaciones |
+
+```bash
+# Preparar conjuntos reales de referencia y producción (descarga septiembre 2026 si falta)
+make monitor-data
+
+# Preparar conjuntos en modo sintético (sin requerir Parquet locales)
+make monitor-data SYNTHETIC=1
+```
+
+
 ## Estructura del proyecto
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
@@ -924,7 +947,9 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 ├── tests                 <- Pruebas automatizadas con PyTest y DeepChecks
 │   ├── __init__.py
+│   ├── test_api.py       <- Pruebas de los endpoints /health y /predict de la API REST
 │   ├── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
+│   ├── test_monitoring_data.py <- Pruebas de ingesta de producción y conjuntos de referencia/actual
 │   ├── test_registry.py  <- Pruebas del cargador de modelos desde el Model Registry
 │   └── test_schemas.py   <- Pruebas de los esquemas Pydantic de entrada y salida (P1, P2 y P3)
 │
@@ -936,6 +961,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── datapackage.py    <- Versión de los datos: `snapshot` escribe datapackage.json y `validate` lo comprueba con frictionless
     ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
+    ├── monitoring.py     <- Ingesta del mes de producción y preparación de conjuntos reference y current
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
     ├── schemas.py        <- Esquemas Pydantic de validación de entradas y salidas para P1, P2 y P3
     ├── validation.py     <- Validación de integridad y drift tabular con DeepChecks (P1, P2 y P3)
@@ -947,6 +973,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
         ├── thresholds.py <- Umbral de alerta de P2, elegido con validación
         ├── train.py      <- Puntos de entrada `train` y `search`: entrenamiento, búsqueda y registro del run en MLflow
         └── predict.py    <- Inferencia con modelos entrenados
+
 ```
 
 ## Validación de calidad de datos y pruebas automatizadas
@@ -1003,7 +1030,7 @@ cada una de sus reglas.
 | `test_registry.py` | `build_model_uri`, `load_registered_model`, `get_registered_model`, `download_registered_model` | Construye la URI por alias (`@champion`) o versión, recupera los modelos de P1, P2 y P3 con sus variables, reutiliza la instancia en caché en memoria y descarga artefactos con metadatos | Pregunta inexistente o sin alias/versión lanza `ValueError`; si el servidor MLflow falla usa el modelo empaquetado en `models/registry/` y, si tampoco existe en caché local, lanza `ModelRegistryError` |
 | `test_schemas.py` | `P1FeaturesInput`, `P2FeaturesInput`, `P3FeaturesInput` y esquemas de salida | Convierte las entradas validadas al orden exacto de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` y construye las respuestas JSON de predicción | Rechaza horas sin servicio (`1:00` a `4:59`), incoherencias entre `day_of_week` e `is_weekend`, intervalos fuera de `0..7`, probabilidades faltantes o fuera de `[0, 1]`, porcentajes de P3 que no suman 100 %, balances fuera de `[-1, 1]` y columnas extra |
 | `test_api.py` | `GET /health` y `POST /predict/p1`, `/predict/p2` y `/predict/p3` con modelos falsos | `/health` informa los tres modelos; cada endpoint responde 200 con su predicción y pasa las variables al modelo en el orden de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` | Responde 422 sin llegar al modelo ante 13 peticiones inválidas (hora sin servicio o fuera de rango, fin de semana incoherente, viajes negativos, texto en lugar de número, variables faltantes o de más, intervalo fuera de 0..7, capacidad 0, porcentajes de P3 que no suman 100 % y balances fuera de [-1, 1]); una predicción negativa de P1 se devuelve como 0 |
-
+| `test_monitoring_data.py` | `prepare_monitoring_data`, `ingest_production_data`, `build_p3_table` | Construye los conjuntos `reference` y `current` con las columnas exactas de P1, P2 y P3, conserva la continuidad de rezagos desde agosto y limpia el CSV de producción en un Parquet separado | Rechaza preguntas desconocidas, ventanas de fechas vacías o rangos inválidos en P3 |
 Para correr un solo archivo:
 
 ```bash

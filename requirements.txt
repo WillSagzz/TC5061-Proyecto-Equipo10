@@ -43,6 +43,7 @@ deepchecks==0.19.1
 # deepchecks importa pkg_resources, que las versiones recientes de setuptools ya no incluyen; por eso
 # setuptools se queda en una versión anterior (riesgo aceptado, ver README > Análisis de dependencias)
 setuptools==80.9.0
+evidently==0.7.23
 
 # Chequeos de seguridad
 bandit==1.9.4
@@ -53,4 +54,4 @@ pip_audit==2.10.1
 cryptography==50.0.0  # la usa mlflow
 pillow==13.0.0  # la usa matplotlib
 filelock==4.2.1  # la usa pip-audit
-tornado==6.6  # la usa deepchecks
+tornado==6.6.1  # la usa deepchecks
