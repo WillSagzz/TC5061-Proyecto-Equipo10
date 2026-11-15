@@ -28,6 +28,9 @@ reports/figures/*.png
 # Reportes HTML de validación que escribe `make check-data`: se regeneran con DeepChecks
 reports/deepchecks/
 
+# Reportes de drift que escribe `make drift`: se regeneran con Evidently
+reports/evidently/
+
 # Configuración del editor
 .vscode/
 

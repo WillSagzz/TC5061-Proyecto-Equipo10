@@ -111,6 +111,10 @@ check-data:
 monitor-data:
 	$(PYTHON_INTERPRETER) -m mibici.monitoring prepare --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic)
 
+## Evidently drift reports (HTML + CSV per question) in reports/evidently/
+.PHONY: drift
+drift:
+	$(PYTHON_INTERPRETER) -m mibici.drift --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic)
 
 ## Run automated unit and data validation tests with PyTest
 .PHONY: test
