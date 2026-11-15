@@ -43,6 +43,7 @@ from mibici.config import (
     P1_HORIZON_HOURS,
     P1_LAG_HOURS,
     P2_INTERVAL_HOURS,
+    PRODUCTION_TRIPS_PATH,
     RISK_THRESHOLD,
     ROLLING_WINDOW,
     STATION_COLUMNS,
@@ -183,6 +184,30 @@ def load_data(
     validate_contract(trips, stations)
     logger.info(f"Datos cargados: {len(trips):,} viajes y {len(stations):,} estaciones")
     return trips.rename(columns=RENAME_COLUMNS), stations.rename(columns=RENAME_COLUMNS)
+
+
+def load_production_trips(
+    trips_path: Path = PRODUCTION_TRIPS_PATH,
+    stations_path: Path = STATIONS_PATH,
+) -> pd.DataFrame:
+    """Carga los viajes del periodo de producción y valida el contrato de datos.
+
+    Lee el Parquet de producción
+    generado fuera de ``datapackage.json`` y aplica las mismas comprobaciones de
+    esquema y tipos que ``load_data``.
+
+    Args:
+        trips_path: Parquet de viajes del periodo actual en producción.
+        stations_path: Parquet de la nomenclatura para validar el contrato.
+
+    Returns:
+        DataFrame de viajes limpios con columnas renombradas (``RENAME_COLUMNS``).
+    """
+    trips = _read_parquet(trips_path, TRIP_COLUMNS)
+    stations = _read_parquet(stations_path, STATION_COLUMNS)
+    validate_contract(trips, stations)
+    logger.info(f"Viajes de producción cargados: {len(trips):,} viajes")
+    return trips.rename(columns=RENAME_COLUMNS)
 
 
 def get_data_version(datapackage_path: Path = DATAPACKAGE_PATH) -> str:
@@ -609,8 +634,13 @@ def _day_period(hours: pd.Series) -> pd.Series:
     return pd.Series(np.select(conditions, names, default=""), index=hours.index)
 
 
-def _train_movements(trips: pd.DataFrame, station_ids: pd.Series) -> pd.DataFrame:
-    """Separa cada viaje en dos movimientos y conserva solo los del periodo de entrenamiento.
+def _train_movements(
+    trips: pd.DataFrame,
+    station_ids: pd.Series,
+    start_date: str = TRAIN_START,
+    end_date: str = VALIDATION_START,
+) -> pd.DataFrame:
+    """Separa cada viaje en dos movimientos y conserva solo los del periodo indicado.
 
     Una salida ocurre en la estación de origen a la hora de inicio; una llegada, en la
     estación de destino a la hora de fin.
@@ -634,8 +664,8 @@ def _train_movements(trips: pd.DataFrame, station_ids: pd.Series) -> pd.DataFram
         ],
         ignore_index=True,
     )
-    in_train = (movements["time"] >= pd.Timestamp(TRAIN_START)) & (
-        movements["time"] < pd.Timestamp(VALIDATION_START)
+    in_train = (movements["time"] >= pd.Timestamp(start_date)) & (
+        movements["time"] < pd.Timestamp(end_date)
     )
     return movements.loc[in_train & movements["station_id"].isin(station_ids)]
 
@@ -646,13 +676,19 @@ def _balance(arrivals: pd.Series, departures: pd.Series) -> pd.Series:
     return ((arrivals - departures) / total.where(total > 0)).fillna(0.0)
 
 
-def build_p3_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
+def build_p3_table(
+    trips: pd.DataFrame,
+    stations: pd.DataFrame,
+    start_date: str = TRAIN_START,
+    end_date: str = VALIDATION_START,
+) -> pd.DataFrame:
     """Construye la tabla de P3: una fila por estación con su perfil de uso.
 
     Atiende P3 (Tablas 4 y 6 de la propuesta): describe cómo se usa cada estación para
     agruparlas por patrón de uso y no por volumen. Un movimiento es cada salida o llegada,
-    así que cada viaje aporta dos. Solo usa los movimientos del periodo de entrenamiento
-    (``TRAIN_START`` a ``VALIDATION_START``) y excluye las estaciones con capacidad 0.
+    así que cada viaje aporta dos. Por defecto usa solo los movimientos del periodo de
+    entrenamiento (``TRAIN_START`` a ``VALIDATION_START``) y excluye las estaciones con
+    capacidad 0; para monitoreo permite calcular el mismo perfil en otra ventana temporal.
     Variables (``P3_FEATURES``):
 
     - ``<periodo>_pct``: porcentaje (0 a 100) de los movimientos en cada periodo de
@@ -668,12 +704,23 @@ def build_p3_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     Args:
         trips: Viajes de ``load_data``.
         stations: Estaciones de ``load_data``.
+        start_date: Fecha de inicio (incluida) de la ventana de cálculo.
+        end_date: Fecha de fin (excluida) de la ventana de cálculo.
 
     Returns:
         Una fila por estación con ``P3_FEATURES``, ``capacity``, ``latitude`` y ``longitude``.
     """
+    n_days = (pd.Timestamp(end_date) - pd.Timestamp(start_date)).days
+    if n_days <= 0:
+        raise ValueError(
+            f"El rango de P3 ({start_date} a {end_date}) debe abarcar al menos un día."
+        )
     with_capacity = stations.loc[stations["capacity"] > 0]
-    movements = _train_movements(trips, with_capacity["station_id"])
+    movements = _train_movements(trips, with_capacity["station_id"], start_date, end_date)
+    if movements.empty:
+        raise ValueError(
+            f"No hay movimientos entre {start_date} y {end_date} para construir la tabla P3."
+        )
     movements = movements.assign(period=_day_period(movements["time"].dt.hour))
 
     # Movimientos por estación, periodo y tipo (salida o llegada); 0 si no hubo
@@ -689,12 +736,11 @@ def build_p3_table(trips: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     table["weekdays_pct"] = is_weekday.groupby(movements["station_id"]).mean() * 100
 
     capacity = with_capacity.set_index("station_id")["capacity"].reindex(table.index)
-    n_days = (pd.Timestamp(VALIDATION_START) - pd.Timestamp(TRAIN_START)).days
     table["log_daily_use_per_dock"] = np.log1p(total / n_days / capacity)
     for period in ("morning", "afternoon"):
         table[f"balance_{period}"] = _balance(counts[(period, True)], counts[(period, False)])
 
     location = with_capacity.set_index("station_id")[["capacity", "latitude", "longitude"]]
     table = table.join(location).reset_index()
-    logger.info(f"Tabla P3: {len(table):,} estaciones con movimientos en entrenamiento")
+    logger.info(f"Tabla P3 ({start_date} a {end_date}): {len(table):,} estaciones con movimientos")
     return table
