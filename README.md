@@ -399,6 +399,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
 | `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
 | `make monitor-data` | `python -m mibici.monitoring prepare --question all` | **Conjuntos de monitoreo (Entrega 05).** Descarga y limpia los viajes del mes de producción (`data/processed/meses_produccion.parquet`, septiembre de 2026) y construye las tablas de referencia (entrenamiento, `2024-09` a `2026-02`) y periodo actual (`2026-09`) para P1, P2 y P3. Acepta `SYNTHETIC=1` y `Q=p1` (`p2`, `p3`). |
+| `make drift` | `python -m mibici.drift --question all` | **Reporte de drift con Evidently (Entrega 05).** Compara referencia y periodo actual de P1, P2 y P3 y escribe en `reports/evidently/` el HTML (drift por variable y calidad de los datos) y un CSV con el drift de cada variable. Acepta `Q=p1` (`p2`, `p3`) y `SYNTHETIC=1`. |
 | `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
 | `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
@@ -899,7 +900,28 @@ make monitor-data
 # Preparar conjuntos en modo sintético (sin requerir Parquet locales)
 make monitor-data SYNTHETIC=1
 ```
+### Reporte de drift con Evidently
 
+`mibici/drift.py` compara el conjunto de referencia con el periodo actual de cada pregunta
+usando Evidently y escribe en `reports/evidently/` (ignorada por Git):
+
+- `<pregunta>_drift.html`: reporte interactivo con el drift por variable (`DataDriftPreset`) y
+  la calidad de los datos (`DataSummaryPreset`).
+- `<pregunta>_drift_resumen.csv`: una fila por variable con el método, el puntaje, el umbral y
+  si hay drift.
+
+Evidently elige la prueba según el tipo de variable y el tamaño de la muestra: con más de
+1,000 filas (P1 y P2) usa distancias, Wasserstein normalizada en numéricas y Jensen-Shannon en
+categóricas, y hay drift si el puntaje es mayor o igual a 0.1; con menos filas (P3, una por
+estación) usa pruebas estadísticas, K-S en numéricas y chi cuadrada en categóricas, y hay drift
+si el p-value es menor a 0.05. Se declara drift del conjunto completo cuando al menos el 50 %
+de las variables tiene drift (`DRIFT_SHARE_THRESHOLD` en `config.py`).
+
+```bash
+make drift                 # las tres preguntas con los datos reales
+make drift Q=p1            # una sola pregunta
+make drift SYNTHETIC=1     # datos sintéticos, sin Parquet locales
+```
 
 ## Estructura del proyecto
 
@@ -949,6 +971,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── __init__.py
 │   ├── test_api.py       <- Pruebas de los endpoints /health y /predict de la API REST
 │   ├── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
+│   ├── test_drift.py     <- Pruebas del reporte de drift con Evidently
 │   ├── test_monitoring_data.py <- Pruebas de ingesta de producción y conjuntos de referencia/actual
 │   ├── test_registry.py  <- Pruebas del cargador de modelos desde el Model Registry
 │   └── test_schemas.py   <- Pruebas de los esquemas Pydantic de entrada y salida (P1, P2 y P3)
@@ -959,7 +982,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
     ├── dataset.py        <- Ingesta reproducible: descarga y verifica contra el descriptor, normaliza, limpia y guarda en Parquet
     ├── datapackage.py    <- Versión de los datos: `snapshot` escribe datapackage.json y `validate` lo comprueba con frictionless
-    ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`
+    ├── drift.py          <- Reportes de drift con Evidently: HTML por pregunta y CSV con el drift de cada variable 
+    ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`   
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
     ├── monitoring.py     <- Ingesta del mes de producción y preparación de conjuntos reference y current
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
@@ -1031,6 +1055,8 @@ cada una de sus reglas.
 | `test_schemas.py` | `P1FeaturesInput`, `P2FeaturesInput`, `P3FeaturesInput` y esquemas de salida | Convierte las entradas validadas al orden exacto de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` y construye las respuestas JSON de predicción | Rechaza horas sin servicio (`1:00` a `4:59`), incoherencias entre `day_of_week` e `is_weekend`, intervalos fuera de `0..7`, probabilidades faltantes o fuera de `[0, 1]`, porcentajes de P3 que no suman 100 %, balances fuera de `[-1, 1]` y columnas extra |
 | `test_api.py` | `GET /health` y `POST /predict/p1`, `/predict/p2` y `/predict/p3` con modelos falsos | `/health` informa los tres modelos; cada endpoint responde 200 con su predicción y pasa las variables al modelo en el orden de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` | Responde 422 sin llegar al modelo ante 13 peticiones inválidas (hora sin servicio o fuera de rango, fin de semana incoherente, viajes negativos, texto en lugar de número, variables faltantes o de más, intervalo fuera de 0..7, capacidad 0, porcentajes de P3 que no suman 100 % y balances fuera de [-1, 1]); una predicción negativa de P1 se devuelve como 0 |
 | `test_monitoring_data.py` | `prepare_monitoring_data`, `ingest_production_data`, `build_p3_table` | Construye los conjuntos `reference` y `current` con las columnas exactas de P1, P2 y P3, conserva la continuidad de rezagos desde agosto y limpia el CSV de producción en un Parquet separado | Rechaza preguntas desconocidas, ventanas de fechas vacías o rangos inválidos en P3 |
+| `test_drift.py` | `build_drift_report`, `summarize_drift`, `save_drift_report` | Escribe el HTML y el CSV de P1, P2 y P3 con una fila por variable; marca con drift las mismas variables que cuenta Evidently, con distancias (P1) y con p-values (P3), y detecta el aumento de demanda de los datos sintéticos | Sin drift cuando el periodo actual es igual al de referencia; acepta las variables categóricas guardadas como `int8`, que Evidently no acepta sin convertir |
+
 Para correr un solo archivo:
 
 ```bash
