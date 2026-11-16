@@ -111,10 +111,10 @@ check-data:
 monitor-data:
 	$(PYTHON_INTERPRETER) -m mibici.monitoring prepare --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic)
 
-## Evidently drift reports (HTML + CSV per question) in reports/evidently/
+## Evidently drift reports (HTML + CSV per question) in reports/evidently/ (optional: REF_START=... REF_END=... KNOWN=1 SUFFIX=...)
 .PHONY: drift
 drift:
-	$(PYTHON_INTERPRETER) -m mibici.drift --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic)
+	$(PYTHON_INTERPRETER) -m mibici.drift --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic) $(if $(REF_START),--reference-start $(REF_START)) $(if $(REF_END),--reference-end $(REF_END)) $(if $(KNOWN),--known-stations-only) $(if $(SUFFIX),--suffix $(SUFFIX))
 
 ## Run automated unit and data validation tests with PyTest
 .PHONY: test

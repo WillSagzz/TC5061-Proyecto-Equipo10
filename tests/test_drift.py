@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from typer.testing import CliRunner
 
+from mibici import drift
 from mibici.drift import SUMMARY_COLUMNS, build_drift_report, save_drift_report, summarize_drift
 from mibici.monitoring import (
     MonitoringDatasets,
@@ -108,3 +110,65 @@ def test_report_accepts_int8_categorical_columns() -> None:
     summary = summarize_drift(build_drift_report(datasets))
 
     assert "hour_of_day" in set(summary["column"])
+
+
+@pytest.mark.parametrize("question", ["p1", "p3"])
+def test_known_stations_only_drops_the_new_stations(question: str) -> None:
+    """Opción ``--known-stations-only``: el conjunto actual queda sin estaciones nuevas.
+
+    Se quitan del histórico los viajes de una estación para que solo exista en septiembre,
+    como las estaciones que abrieron después del periodo de referencia.
+    """
+    trips, production_trips, stations = build_synthetic_monitoring_data()
+    new_station = int(stations["station_id"].max())
+    is_old = (trips["origin_station_id"] != new_station) & (
+        trips["destination_station_id"] != new_station
+    )
+    inputs = (trips.loc[is_old].reset_index(drop=True), production_trips, stations)
+
+    base = prepare_monitoring_data(question, *inputs)
+    known = prepare_monitoring_data(question, *inputs, known_stations_only=True)
+
+    assert new_station in set(base.current["station_id"])
+    assert new_station not in set(known.current["station_id"])
+    assert set(known.current["station_id"]) <= set(known.reference["station_id"])
+    assert len(known.reference) == len(base.reference)
+
+
+def test_suffix_writes_new_files_next_to_the_base_report(tmp_path: Path) -> None:
+    """Opción ``--suffix``: los archivos llevan el sufijo y los del reporte base no cambian."""
+    datasets = _datasets("p3")
+    _, base_csv, _ = save_drift_report(datasets, output_dir=tmp_path)
+    base_content = base_csv.read_bytes()
+
+    html_path, csv_path, _ = save_drift_report(datasets, output_dir=tmp_path, suffix="conocidas")
+
+    assert html_path == tmp_path / "p3_drift_conocidas.html"
+    assert csv_path == tmp_path / "p3_drift_conocidas_resumen.csv"
+    assert base_csv.read_bytes() == base_content
+    assert len(list(tmp_path.iterdir())) == 4
+
+
+def test_command_options_reach_the_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opciones ``--reference-start`` y ``--reference-end``, junto con las otras dos.
+
+    El comando corre con los datos sintéticos y escribe en una carpeta temporal en lugar de
+    ``reports/evidently/``.
+    """
+    received: list[MonitoringDatasets] = []
+
+    def _save_to_tmp(datasets: MonitoringDatasets, suffix: str = "") -> None:
+        received.append(datasets)
+        save_drift_report(datasets, output_dir=tmp_path, suffix=suffix)
+
+    monkeypatch.setattr(drift, "save_drift_report", _save_to_tmp)
+    arguments = ["--question", "p3", "--synthetic", "--known-stations-only"]
+    arguments += ["--reference-start", "2025-09-01", "--reference-end", "2025-10-01"]
+    arguments += ["--suffix", "mismo_mes"]
+
+    result = CliRunner().invoke(drift.app, arguments)
+
+    assert result.exit_code == 0, result.output
+    assert (received[0].reference_start, received[0].reference_end) == ("2025-09-01", "2025-10-01")
+    assert (tmp_path / "p3_drift_mismo_mes.html").exists()
+    assert (tmp_path / "p3_drift_mismo_mes_resumen.csv").exists()

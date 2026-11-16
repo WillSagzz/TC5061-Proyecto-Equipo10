@@ -399,7 +399,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
 | `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
 | `make monitor-data` | `python -m mibici.monitoring prepare --question all` | **Conjuntos de monitoreo (Entrega 05).** Descarga y limpia los viajes del mes de producción (`data/processed/meses_produccion.parquet`, septiembre de 2026) y construye las tablas de referencia (entrenamiento, `2024-09` a `2026-02`) y periodo actual (`2026-09`) para P1, P2 y P3. Acepta `SYNTHETIC=1` y `Q=p1` (`p2`, `p3`). |
-| `make drift` | `python -m mibici.drift --question all` | **Reporte de drift con Evidently (Entrega 05).** Compara referencia y periodo actual de P1, P2 y P3 y escribe en `reports/evidently/` el HTML (drift por variable y calidad de los datos) y un CSV con el drift de cada variable. Acepta `Q=p1` (`p2`, `p3`) y `SYNTHETIC=1`. |
+| `make drift` | `python -m mibici.drift --question all` | **Reporte de drift con Evidently (Entrega 05).** Compara referencia y periodo actual de P1, P2 y P3 y escribe en `reports/evidently/` el HTML (drift por variable y calidad de los datos) y un CSV con el drift de cada variable. Acepta `Q=p1` (`p2`, `p3`) y `SYNTHETIC=1`; con `REF_START=`, `REF_END=`, `KNOWN=1` y `SUFFIX=` compara contra otra referencia o solo con las estaciones conocidas ([Reporte de drift con Evidently](#reporte-de-drift-con-evidently)). |
 | `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
 | `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
@@ -922,6 +922,19 @@ de las variables tiene drift (`DRIFT_SHARE_THRESHOLD` en `config.py`).
 make drift                 # las tres preguntas con los datos reales
 make drift Q=p1            # una sola pregunta
 make drift SYNTHETIC=1     # datos sintéticos, sin Parquet locales
+```
+
+Para separar las causas del drift, el mismo comando acepta otra comparación:
+
+| Variable de `make` | Opción de `python -m mibici.drift` | Qué hace |
+|---|---|---|
+| `REF_START=` y `REF_END=` | `--reference-start` y `--reference-end` | Otra ventana de referencia (inicio incluido, fin excluido). Por defecto, el periodo de entrenamiento. |
+| `KNOWN=1` | `--known-stations-only` | Deja en el periodo actual solo las estaciones que ya estaban en la referencia. |
+| `SUFFIX=` | `--suffix` | Texto que se agrega al nombre de los archivos (`<pregunta>_drift_<sufijo>.html` y `<pregunta>_drift_<sufijo>_resumen.csv`), para no sobrescribir el reporte base. |
+
+```bash
+make drift KNOWN=1 SUFFIX=conocidas                                   # sin las estaciones nuevas
+make drift REF_START=2025-09-01 REF_END=2025-10-01 SUFFIX=mismo_mes   # contra septiembre de 2025
 ```
 
 ## Estructura del proyecto
