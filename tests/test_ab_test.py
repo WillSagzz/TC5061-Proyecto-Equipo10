@@ -53,6 +53,9 @@ CHAMPION_RUN_PARAMS = {
     "inicio_validacion": VALIDATION_START,
     "inicio_prueba": config.TEST_START,
     "fin_datos": config.DATA_END,
+    "filas_train": "10",
+    "filas_val": "5",
+    "filas_test": "5",
 }
 
 
@@ -121,8 +124,9 @@ def test_retrain_logs_the_same_model_params_as_the_champion(
     """Caso normal: el run de B repite los parámetros del modelo de A, con sus propias fechas.
 
     Así la vista *Compare* de MLflow muestra los mismos parámetros en las dos versiones.
+    Las filas de entrenamiento son las de B, no las que registró el run de A.
     """
-    _, _, challenger = _register_both(monkeypatch, tmp_path)
+    datasets, _, challenger = _register_both(monkeypatch, tmp_path)
 
     run = _challenger_run(challenger)
     params = run.data.params
@@ -133,6 +137,9 @@ def test_retrain_logs_the_same_model_params_as_the_champion(
     assert params["fin_entrenamiento"] == config.RETRAIN_END
     assert params["inicio_prueba"] == config.CURRENT_START
     assert "inicio_validacion" not in params
+    assert params["filas_train"] == str(len(datasets.reference))
+    assert "filas_val" not in params
+    assert "filas_test" not in params
     assert run.data.tags["mlflow.runName"] == f"P1-reentrenado-hasta-{config.RETRAIN_END}"
     assert run.inputs.dataset_inputs  # pestaña Datasets, como los runs de make train
 

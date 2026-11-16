@@ -75,7 +75,8 @@ SEGMENTS = ("todas", "conocidas", "nuevas")
 # Hiperparámetros del HistGradientBoostingRegressor que se registran si no se pueden copiar
 # del run de @champion (por ejemplo, si se registró sin parámetros)
 LOGGED_HYPERPARAMS = ("loss", "learning_rate", "max_iter", "max_leaf_nodes", "random_state")
-# Parámetros del run de @champion que no se copian: describen sus fechas, no el modelo
+# Parámetros del run de @champion que no se copian: describen sus fechas y el tamaño de su
+# partición, no el modelo
 PARTITION_PARAMS = (
     "inicio_entrenamiento",
     "inicio_validacion",
@@ -83,6 +84,9 @@ PARTITION_PARAMS = (
     "fin_datos",
     "version_datos",
     "semilla",
+    "filas_train",
+    "filas_val",
+    "filas_test",
 )
 
 
@@ -178,7 +182,8 @@ def champion_params(champion: LoadedModel) -> dict[str, str]:
     """Parámetros del modelo con que se entrenó @champion, para repetirlos en la versión B.
 
     Copia del run que registró la versión A todo lo que describe el modelo (``model``,
-    ``estimador``, ``variables``, ``hp_*``…) y deja fuera sus fechas (``PARTITION_PARAMS``).
+    ``estimador``, ``variables``, ``hp_*``…) y deja fuera sus fechas y sus filas
+    (``PARTITION_PARAMS``).
     Así, en la vista *Compare* de MLflow las dos versiones muestran los mismos parámetros y
     solo cambian las fechas. Si el run no tiene parámetros, usa los del propio modelo.
 
