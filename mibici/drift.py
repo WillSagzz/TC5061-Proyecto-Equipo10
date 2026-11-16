@@ -9,10 +9,18 @@ conjunto actual (septiembre de 2026) que prepara ``monitoring.py`` y escribe en
 - ``<pregunta>_drift_resumen.csv``: una fila por variable con el método estadístico, el
   puntaje, el umbral y si hay drift.
 
+Por defecto compara contra el periodo de entrenamiento y con todas las estaciones. Las
+opciones ``--reference-start`` y ``--reference-end`` cambian la ventana de referencia,
+``--known-stations-only`` deja en el conjunto actual solo las estaciones que ya estaban en la
+referencia y ``--suffix`` agrega un texto al nombre de los archivos para no sobrescribir el
+reporte base.
+
 Uso desde la raíz del repositorio:
 
     python -m mibici.drift --question all
     python -m mibici.drift --question p1 --synthetic
+    python -m mibici.drift --known-stations-only --suffix conocidas
+    python -m mibici.drift --reference-start 2025-09-01 --reference-end 2025-10-01 --suffix mismo_mes
 """
 
 from pathlib import Path
@@ -25,7 +33,13 @@ from loguru import logger
 import pandas as pd
 import typer
 
-from mibici.config import DRIFT_SHARE_THRESHOLD, EVIDENTLY_REPORTS_DIR, EVIDENTLY_SAMPLE_SIZE
+from mibici.config import (
+    DRIFT_SHARE_THRESHOLD,
+    EVIDENTLY_REPORTS_DIR,
+    EVIDENTLY_SAMPLE_SIZE,
+    REFERENCE_END,
+    REFERENCE_START,
+)
 from mibici.monitoring import (
     VALID_QUESTIONS,
     MonitoringDatasets,
@@ -137,6 +151,7 @@ def save_drift_report(
     datasets: MonitoringDatasets,
     output_dir: Path = EVIDENTLY_REPORTS_DIR,
     drift_share: float = DRIFT_SHARE_THRESHOLD,
+    suffix: str = "",
 ) -> tuple[Path, Path, pd.DataFrame]:
     """Genera el reporte de una pregunta y lo guarda como HTML y como tabla CSV.
 
@@ -144,6 +159,8 @@ def save_drift_report(
         datasets: Conjuntos de referencia y actual de ``prepare_monitoring_data``.
         output_dir: Carpeta de salida (``reports/evidently`` por defecto).
         drift_share: Fracción de variables con drift para declarar drift del conjunto.
+        suffix: Texto que se agrega al nombre de los archivos (``p1_drift_<suffix>.html`` y
+            ``p1_drift_<suffix>_resumen.csv``) para no sobrescribir el reporte base.
 
     Returns:
         Ruta del HTML, ruta del CSV y la tabla de drift por variable.
@@ -153,8 +170,9 @@ def save_drift_report(
     snapshot = build_drift_report(datasets, drift_share=drift_share)
     summary = summarize_drift(snapshot)
 
-    html_path = output_dir / f"{datasets.question}_drift.html"
-    csv_path = output_dir / f"{datasets.question}_drift_resumen.csv"
+    stem = f"{datasets.question}_drift" + (f"_{suffix}" if suffix else "")
+    html_path = output_dir / f"{stem}.html"
+    csv_path = output_dir / f"{stem}_resumen.csv"
     snapshot.save_html(str(html_path))
     summary.to_csv(csv_path, index=False)
 
@@ -179,6 +197,22 @@ def main(
     synthetic: Annotated[
         bool, typer.Option(help="Usar datos sintéticos en memoria sin requerir Parquet locales.")
     ] = False,
+    reference_start: Annotated[
+        str, typer.Option(help="Inicio (incluido) de la ventana de referencia (AAAA-MM-DD).")
+    ] = REFERENCE_START,
+    reference_end: Annotated[
+        str, typer.Option(help="Fin (excluido) de la ventana de referencia (AAAA-MM-DD).")
+    ] = REFERENCE_END,
+    known_stations_only: Annotated[
+        bool,
+        typer.Option(
+            "--known-stations-only",
+            help="Dejar en el conjunto actual solo las estaciones presentes en la referencia.",
+        ),
+    ] = False,
+    suffix: Annotated[
+        str, typer.Option(help="Texto que se agrega al nombre de los archivos de salida.")
+    ] = "",
 ) -> None:
     """Genera los reportes de drift de Evidently de una pregunta o de las tres."""
     normalized = question.strip().lower()
@@ -190,9 +224,12 @@ def main(
             trips=trips,
             production_trips=production_trips,
             stations=stations,
+            reference_start=reference_start,
+            reference_end=reference_end,
             sample_size=sample_size if sample_size > 0 else None,
+            known_stations_only=known_stations_only,
         )
-        save_drift_report(datasets)
+        save_drift_report(datasets, suffix=suffix)
 
 
 if __name__ == "__main__":

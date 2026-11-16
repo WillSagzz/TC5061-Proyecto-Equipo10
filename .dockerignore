@@ -1,8 +1,9 @@
 # Lo que `podman build` no copia al contexto de la imagen (Containerfile). Podman lee este
 # archivo igual que Docker (usa .containerignore si existe y, si no, .dockerignore), así que el
 # mismo archivo sirve para los dos motores. La imagen solo necesita requirements.txt,
-# pyproject.toml, README.md y mibici/; todo lo demás sobra, y las credenciales (.env) nunca
-# deben entrar en ella: se pasan con --env-file al ejecutar.
+# pyproject.toml, README.md, mibici/ y, si se descargaron, los modelos de models/registry/;
+# todo lo demás sobra, y las credenciales (.env) nunca deben entrar en ella: se pasan con
+# --env-file al ejecutar.
 
 # Credenciales y entornos virtuales
 .env
@@ -16,7 +17,13 @@ data/
 mlflow.db
 mlartifacts/
 mlruns/
-models/
+
+# De models/ solo entran los modelos que `make image-offline` descarga del Model Registry
+# (models/registry/) y el .gitkeep, que garantiza que la carpeta exista aunque no se hayan
+# descargado; los .joblib de `make train` se quedan fuera
+models/*
+!models/.gitkeep
+!models/registry/
 
 # Documentación, exploración, reportes y pruebas: no forman parte del servicio
 docs/

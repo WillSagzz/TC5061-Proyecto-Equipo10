@@ -399,7 +399,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make validate` | `python -m mibici.datapackage validate` | **Verificación completa** de los archivos locales contra `datapackage.json`: hashes, tamaños y todas las filas de cada CSV. |
 | `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
 | `make monitor-data` | `python -m mibici.monitoring prepare --question all` | **Conjuntos de monitoreo (Entrega 05).** Descarga y limpia los viajes del mes de producción (`data/processed/meses_produccion.parquet`, septiembre de 2026) y construye las tablas de referencia (entrenamiento, `2024-09` a `2026-02`) y periodo actual (`2026-09`) para P1, P2 y P3. Acepta `SYNTHETIC=1` y `Q=p1` (`p2`, `p3`). |
-| `make drift` | `python -m mibici.drift --question all` | **Reporte de drift con Evidently (Entrega 05).** Compara referencia y periodo actual de P1, P2 y P3 y escribe en `reports/evidently/` el HTML (drift por variable y calidad de los datos) y un CSV con el drift de cada variable. Acepta `Q=p1` (`p2`, `p3`) y `SYNTHETIC=1`. |
+| `make drift` | `python -m mibici.drift --question all` | **Reporte de drift con Evidently (Entrega 05).** Compara referencia y periodo actual de P1, P2 y P3 y escribe en `reports/evidently/` el HTML (drift por variable y calidad de los datos) y un CSV con el drift de cada variable. Acepta `Q=p1` (`p2`, `p3`) y `SYNTHETIC=1`; con `REF_START=`, `REF_END=`, `KNOWN=1` y `SUFFIX=` compara contra otra referencia o solo con las estaciones conocidas ([Reporte de drift con Evidently](#reporte-de-drift-con-evidently)). |
 | `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
 | `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
@@ -418,6 +418,8 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make api` | `uvicorn mibici.api:app --reload` | **Ejecución de API REST local**: se ejecuta un servidor de `FastAPI` en el ambiente donde se este ejecutando el comando. |
 | `make image` | `podman build -t mibici-api .` | **Generar imágen de API**: Construye la imágen que empaqueta la aplicación con todas sus dependencias, a partir de la definición encontrada en el archivo `Containerfile`. |
 | `make container` | `podman run --rm --env-file .env -p 8000:8000 mibici-api` | **Ejecutar el contenedor con la API**: Ejecuta el contenedor de la API a partir de la imágen previamente construida con podman. |
+| `make image-offline` | `python -m mibici.modeling.registry download --question all` y `podman build -t mibici-api .` | **Imagen con los modelos empaquetados**: descarga los tres modelos `@champion` a `models/registry/` (necesita el `.env`) y construye la imagen con ellos dentro. |
+| `make container-offline` | `podman run --rm -p 8000:8000 mibici-api` | **Contenedor sin el servidor de MLflow**: ejecuta la imagen de `make image-offline` sin `.env`; la API carga los modelos empaquetados. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
@@ -687,10 +689,11 @@ en `config.py`) mediante `load_registered_model` y `get_registered_model`:
    defecto el alias `@champion` (`models:/<nombre>@champion`) contra el servidor configurado en
    `MLFLOW_TRACKING_URI` y mantiene la instancia en caché en memoria para no descargar el
    artefacto en cada petición HTTP.
-2. **Respaldo local empaquetado (`models/registry/<pregunta>`):** permite descargar previamente
-   el artefacto desde el Model Registry (`download_registered_model`) para empaquetarlo en la
-   imagen del contenedor o iniciar el servicio cuando no se dispone de conexión o credenciales
-   remotas.
+2. **Modelos empaquetados (`models/registry/<pregunta>`):** `download_registered_model` descarga
+   el artefacto del Model Registry a esa carpeta (ignorada por Git). Si `MLFLOW_TRACKING_URI` no
+   está definida, la API carga los modelos de ahí sin consultar el servidor; si está definida y
+   el servidor no responde, los usa como respaldo. `make image-offline` los descarga y los mete
+   en la imagen, para que el contenedor arranque sin el servidor (ver *Contenedor Podman*).
 
 ```bash
 # Comprobar la carga de los tres modelos @champion desde el Model Registry
@@ -712,10 +715,11 @@ La definición del contenedor se encuentra en el archivo `Containerfile` en la r
 4. Copiar archivos para instalación de dependencias
 5. Copiar directorio del proyecto
 6. Instalación de dependencias
-7. Crear usuario con permisos para correr el servidor `FastAPI`
-8. Utilizar el usuario que se acaba de crear, para los siguientes pasos
-9. Exponer el puerto de comunicación del servidor `FastAPI`
-10. Comando de `uvicorn` para la ejecución del servidor `FastAPI`
+7. Copiar los modelos descargados del Model Registry, si existen (`models/registry/`)
+8. Crear usuario con permisos para correr el servidor `FastAPI`
+9. Utilizar el usuario que se acaba de crear, para los siguientes pasos
+10. Exponer el puerto de comunicación del servidor `FastAPI`
+11. Comando de `uvicorn` para la ejecución del servidor `FastAPI`
 
 Se puede levantar el contenedor podman con la API REST de FastAPI mediante el uso de dos comandos `make`:
 ``` bash
@@ -724,6 +728,19 @@ make container
 ```
 
 Notese que es necesario definir el archivo de configuración `.env` para la correcta ejecución del contenedor.
+
+**Sin el servidor de MLflow.** Para que el contenedor arranque sin conexión al servidor del equipo,
+los modelos se empaquetan en la imagen:
+
+``` bash
+make image-offline       # descarga los tres modelos @champion (necesita el .env) y construye la imagen
+make container-offline   # ejecuta el contenedor sin .env: la API carga los modelos de la imagen
+```
+
+En el log del contenedor cada modelo aparece con `MLFLOW_TRACKING_URI no está definida; se carga la
+copia empaquetada`, y `GET /health` responde `"source": "cache"` con la versión descargada. La imagen
+lleva una versión fija de cada modelo: si cambia el `@champion` del Model Registry, hay que volver a
+correr `make image-offline`.
 
 ### Estrategia de despliegue
 
@@ -922,6 +939,19 @@ de las variables tiene drift (`DRIFT_SHARE_THRESHOLD` en `config.py`).
 make drift                 # las tres preguntas con los datos reales
 make drift Q=p1            # una sola pregunta
 make drift SYNTHETIC=1     # datos sintéticos, sin Parquet locales
+```
+
+Para separar las causas del drift, el mismo comando acepta otra comparación:
+
+| Variable de `make` | Opción de `python -m mibici.drift` | Qué hace |
+|---|---|---|
+| `REF_START=` y `REF_END=` | `--reference-start` y `--reference-end` | Otra ventana de referencia (inicio incluido, fin excluido). Por defecto, el periodo de entrenamiento. |
+| `KNOWN=1` | `--known-stations-only` | Deja en el periodo actual solo las estaciones que ya estaban en la referencia. |
+| `SUFFIX=` | `--suffix` | Texto que se agrega al nombre de los archivos (`<pregunta>_drift_<sufijo>.html` y `<pregunta>_drift_<sufijo>_resumen.csv`), para no sobrescribir el reporte base. |
+
+```bash
+make drift KNOWN=1 SUFFIX=conocidas                                   # sin las estaciones nuevas
+make drift REF_START=2025-09-01 REF_END=2025-10-01 SUFFIX=mismo_mes   # contra septiembre de 2025
 ```
 
 ## Estructura del proyecto
