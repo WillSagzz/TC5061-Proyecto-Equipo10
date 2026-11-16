@@ -421,7 +421,8 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
-| `make entrega04` | `python docs/entregas/build.py docs/entregas/entrega04` | Compila el reporte de la API REST (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
+| `make entrega04` | `python docs/entregas/build.py docs/entregas/entrega04` | Compila el reporte de la API REST (Markdown → HTML → PDF) en `docs/entregas/entrega04/build/`. |
+| `make entrega05` | `python docs/entregas/build.py docs/entregas/entrega05` | Compila el reporte de drift y A/B testing (Markdown → HTML → PDF) en `docs/entregas/entrega05/build/`. |
 
 ## Reproducir con el MLflow Project
 
@@ -949,7 +950,9 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── entregas          <- Fuente de los PDF de cada entrega y el compilador `build.py`
 │   │   ├── entrega01     <- Propuesta: secciones en Markdown, figuras y capturas de MLflow
 │   │   ├── entrega02     <- Reporte de experimentos con MLflow: secciones en Markdown y capturas
-│   │   └── entrega03     <- Reporte de pruebas y chequeos de seguridad: secciones en Markdown y capturas de evidencia
+│   │   ├── entrega03     <- Reporte de pruebas y chequeos de seguridad: secciones en Markdown y capturas de evidencia
+│   │   ├── entrega04     <- Reporte de la API REST en contenedor Podman: secciones en Markdown y capturas del contenedor
+│   │   └── entrega05     <- Reporte de drift y A/B testing: una sección por archivo, figuras de Evidently y anexos
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
 ├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
