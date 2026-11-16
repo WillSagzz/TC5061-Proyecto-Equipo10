@@ -40,23 +40,7 @@ Mientras que se aplicó el método de _Jensen-Shannon distance_ para las feature
 
 ## Reporte de P2
 
-Tabla de drift por variable:
-| column | method | score | threshold | drift |
-| --- | --- | --- | --- | --- |
-| capacity | Wasserstein distance (normed) | 0.101 | 0.1 | True |
-| station_id | Jensen-Shannon distance | 0.287 | 0.1 | True |
-| departures_lag_1 | Wasserstein distance (normed) | 0.030 | 0.1 | False |
-| departures_lag_8 | Wasserstein distance (normed) | 0.034 | 0.1 | False |
-| departures_lag_56 | Wasserstein distance (normed) | 0.053 | 0.1 | False |
-| arrivals_lag_1 | Wasserstein distance (normed) | 0.029 | 0.1 | False |
-| arrivals_lag_8 | Wasserstein distance (normed) | 0.030 | 0.1 | False |
-| net_flow_lag_1 | Wasserstein distance (normed) | 0.076 | 0.1 | False |
-| net_flow_lag_8 | Wasserstein distance (normed) | 0.075 | 0.1 | False |
-| departures_mean_3 | Wasserstein distance (normed) | 0.043 | 0.1 | False |
-| interval_of_day | Jensen-Shannon distance | 0.006 | 0.1 | False |
-| day_of_week | Jensen-Shannon distance | 0.036 | 0.1 | False |
-| is_weekend | Jensen-Shannon distance | 0.015 | 0.1 | False |
-| risk | Jensen-Shannon distance | 0.026 | 0.1 | False |
+La tabla de drift por variable está en los anexos.
 
 `Evidently` aplico los mismos métodos que con `P1` porque ambos sets de datos contienen más de 1,000 filas, además de ser numéricos y categóricos también.
 Las razones para aplicar estos dos métodos a cada tipo de dato son las mismas que se describieron en `P1`.
@@ -67,18 +51,7 @@ Las razones para aplicar estos dos métodos a cada tipo de dato son las mismas q
 
 ## Reporte de P3
 
-Tabla de drift por variable:
-
-| column | method | score | threshold | drift |
-| --- | --- | --- | --- | --- |
-| midday_pct | K-S p_value | 0.000 | 0.05 | True |
-| afternoon_pct | K-S p_value | 0.009 | 0.05 | True |
-| night_pct | K-S p_value | 0.002 | 0.05 | True |
-| weekdays_pct | K-S p_value | 0.025 | 0.05 | True |
-| balance_afternoon | K-S p_value | 0.004 | 0.05 | True |
-| morning_pct | K-S p_value | 0.120 | 0.05 | False |
-| log_daily_use_per_dock | K-S p_value | 0.570 | 0.05 | False |
-| balance_morning | K-S p_value | 0.931 | 0.05 | False |
+La tabla de drift por variable está en los anexos.
 
 En este caso, todas las features eran de tipo numérico y el dataset contenía menos de 1,000 filas. Por esto `Evidently` aplicó el método de K-S p_value a todas las features. Aqui, un p-value menor a 0.05 indica evidencia estadística de que las dos distribuciones son distintas (evidencia de drift).
 
