@@ -2,7 +2,7 @@
 
 `make drift` (`mibici/drift.py`) compara el conjunto de referencia con el actual de cada pregunta y genera un reporte de Evidently con dos partes: el drift por variable (`DataDriftPreset`) y la calidad de los datos (`DataSummaryPreset`). Evidently elige la prueba según el tipo de variable y el tamaño de la muestra. En P1 y P2, que tienen más de 1,000 filas, mide la distancia entre las dos distribuciones: Wasserstein normalizada en las variables numéricas y Jensen-Shannon en las categóricas. Hay drift si la distancia es de 0.1 o más. En P3, con una fila por estación, aplica la prueba de Kolmogorov-Smirnov, y hay drift si el valor p es menor que 0.05. Se declara drift del conjunto completo cuando cambia al menos la mitad de las variables (`DRIFT_SHARE_THRESHOLD` en `config.py`).
 
-**Tabla 2.** Resultado del reporte de drift por pregunta. El puntaje de cada variable está en los anexos.
+**Tabla 2.** Resultado del reporte de drift por pregunta. El puntaje de cada variable está en el Anexo B.
 
 | Pregunta | Variables evaluadas | Con drift | Variables con drift y su puntaje | Drift del conjunto |
 |---|---:|---:|---|---|
