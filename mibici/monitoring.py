@@ -216,6 +216,23 @@ def _slice_period(table: pd.DataFrame, start_date: str, end_date: str, label: st
     return subset
 
 
+def _keep_known_stations(current: pd.DataFrame, reference: pd.DataFrame) -> pd.DataFrame:
+    """Deja en ``current`` solo las estaciones que aparecen en ``reference``.
+
+    Raises:
+        ValueError: Si ninguna estación del conjunto actual está en la referencia.
+    """
+    is_known = current["station_id"].isin(reference["station_id"].unique())
+    if not is_known.any():
+        raise ValueError("Ninguna estación del conjunto actual aparece en la referencia.")
+    n_new = current.loc[~is_known, "station_id"].nunique()
+    logger.info(
+        f"Solo estaciones conocidas: se retiran {n_new} estaciones nuevas "
+        f"({(~is_known).sum():,} de {len(current):,} filas del conjunto actual)"
+    )
+    return current.loc[is_known].reset_index(drop=True)
+
+
 def prepare_monitoring_data(
     question: str,
     trips: pd.DataFrame,
@@ -227,6 +244,7 @@ def prepare_monitoring_data(
     current_end: str = CURRENT_END,
     sample_size: int | None = None,
     seed: int = RANDOM_SEED,
+    known_stations_only: bool = False,
 ) -> MonitoringDatasets:
     """Construye las tablas de referencia y periodo actual para ``p1``, ``p2`` o ``p3``.
 
@@ -248,12 +266,15 @@ def prepare_monitoring_data(
         current_end: Fin (excluido) de la ventana actual.
         sample_size: Si se indica, toma una muestra determinista máxima de ``sample_size`` filas.
         seed: Semilla aleatoria para muestreo reproducible.
+        known_stations_only: Si es ``True``, el conjunto actual conserva solo las estaciones
+            presentes en la referencia; se aplica antes del muestreo.
 
     Returns:
         Instancia de ``MonitoringDatasets`` con las tablas ``reference`` y ``current``.
 
     Raises:
-        ValueError: Si la pregunta no es válida o si alguna ventana temporal queda vacía.
+        ValueError: Si la pregunta no es válida, si alguna ventana temporal queda vacía o si
+            ``known_stations_only`` deja el conjunto actual sin estaciones.
     """
     normalized = question.strip().lower()
     if normalized not in VALID_QUESTIONS:
@@ -289,6 +310,9 @@ def prepare_monitoring_data(
         current = build_p3_table(
             combined_trips, stations, start_date=current_start, end_date=current_end
         )
+
+    if known_stations_only:
+        current = _keep_known_stations(current, reference)
 
     if sample_size is not None:
         if len(reference) > sample_size:
