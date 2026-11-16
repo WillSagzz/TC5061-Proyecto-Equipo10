@@ -31,6 +31,9 @@ reports/deepchecks/
 # Reportes de drift que escribe `make drift`: se regeneran con Evidently
 reports/evidently/
 
+# Tablas del A/B testing que escribe `make ab-test`: se regeneran y cada run las guarda
+reports/ab_test/
+
 # Configuración del editor
 .vscode/
 
