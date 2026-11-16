@@ -29,7 +29,7 @@ Una sección por archivo, para que cada parte se escriba en su propio PR sin con
 | `04-version-alternativa.md` | Versión nueva en el Model Registry | #59 |
 | `05-ab-testing.md` | Tabla comparativa y versión vigente | #59 |
 | `06-recomendacion.md` | Recomendación sobre *Continuous Training* | #60 |
-| `07-anexos.md` | Comandos para reproducir y drift por variable | #57 |
+| `07-anexos.md` | Drift por variable de P1, P2 y P3 | #57 |
 
 Las secciones sin escribir llevan su título y un recuadro `<div class="pendiente">` (naranja en el
 PDF) con `TODO` y el número de su issue. Se listan con

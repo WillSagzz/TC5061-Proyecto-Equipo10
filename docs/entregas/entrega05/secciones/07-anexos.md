@@ -1,21 +1,8 @@
 # Anexos
 
-## Anexo A. Comandos para reproducir el reporte
+## Drift por variable
 
-El código está en el repositorio: `mibici/monitoring.py` (conjuntos), `mibici/drift.py` (reporte de Evidently) y `mibici/modeling/ab_test.py` (versión alternativa y A/B testing). Los comandos se ejecutan desde la raíz, con las dependencias de `requirements.txt` instaladas y el archivo `.env` del servidor de MLflow del equipo.
-
-```bash
-make data            # descarga y limpia los 24 meses de la versión de datos
-make monitor-data    # descarga septiembre de 2026 y arma los conjuntos de referencia y actual
-make drift           # reportes de Evidently en reports/evidently/
-make retrain         # reentrena P1 y lo registra como @challenger
-make ab-test         # compara @champion y @challenger; tabla en reports/ab_test/
-make entrega05       # compila este PDF
-```
-
-## Anexo B. Drift por variable
-
-**Tabla B1.** P1: drift por variable (11 variables; umbral de 0.1).
+**Tabla A1.** P1: drift por variable (11 variables; umbral de 0.1).
 
 | Variable | Método | Puntaje | Drift |
 |---|---|---:|---|
@@ -31,7 +18,7 @@ make entrega05       # compila este PDF
 | `is_weekend` | Jensen-Shannon | 0.016 | No |
 | `hour_of_day` | Jensen-Shannon | 0.010 | No |
 
-**Tabla B2.** P2: drift por variable (14 variables; umbral de 0.1).
+**Tabla A2.** P2: drift por variable (14 variables; umbral de 0.1).
 
 | Variable | Método | Puntaje | Drift |
 |---|---|---:|---|
@@ -50,7 +37,7 @@ make entrega05       # compila este PDF
 | `is_weekend` | Jensen-Shannon | 0.015 | No |
 | `interval_of_day` | Jensen-Shannon | 0.006 | No |
 
-**Tabla B3.** P3: drift por variable (8 variables; hay drift si el valor p es menor que 0.05).
+**Tabla A3.** P3: drift por variable (8 variables; hay drift si el valor p es menor que 0.05).
 
 | Variable | Método | Valor p | Drift |
 |---|---|---:|---|
@@ -63,4 +50,4 @@ make entrega05       # compila este PDF
 | `log_daily_use_per_dock` | Kolmogorov-Smirnov | 0.570 | No |
 | `balance_morning` | Kolmogorov-Smirnov | 0.931 | No |
 
-![Figura B1. P2: distribución de station_id y capacity en la referencia (izquierda) y en septiembre de 2026 (derecha).](../figuras/drift_03_p2_summary_data_dist.png)
+![Figura A1. P2: distribución de station_id y capacity en la referencia (izquierda) y en septiembre de 2026 (derecha).](../figuras/drift_03_p2_summary_data_dist.png)
