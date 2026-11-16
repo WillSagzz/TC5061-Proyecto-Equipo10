@@ -400,6 +400,8 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make check-data` | `python -m mibici.validation` | **Validación tabular con DeepChecks.** Construye las tablas de modelado de P1, P2 y P3, ejecuta las suites de integridad de datos y de *drift* / fugas temporales entre entrenamiento y prueba, y exporta los reportes interactivos HTML en `reports/deepchecks/`. Acepta `SYNTHETIC=1` para validar en memoria sin requerir los Parquet locales y `Q=p1` (`p2`, `p3`) para validar una sola pregunta. |
 | `make monitor-data` | `python -m mibici.monitoring prepare --question all` | **Conjuntos de monitoreo (Entrega 05).** Descarga y limpia los viajes del mes de producción (`data/processed/meses_produccion.parquet`, septiembre de 2026) y construye las tablas de referencia (entrenamiento, `2024-09` a `2026-02`) y periodo actual (`2026-09`) para P1, P2 y P3. Acepta `SYNTHETIC=1` y `Q=p1` (`p2`, `p3`). |
 | `make drift` | `python -m mibici.drift --question all` | **Reporte de drift con Evidently (Entrega 05).** Compara referencia y periodo actual de P1, P2 y P3 y escribe en `reports/evidently/` el HTML (drift por variable y calidad de los datos) y un CSV con el drift de cada variable. Acepta `Q=p1` (`p2`, `p3`) y `SYNTHETIC=1`; con `REF_START=`, `REF_END=`, `KNOWN=1` y `SUFFIX=` compara contra otra referencia o solo con las estaciones conocidas ([Reporte de drift con Evidently](#reporte-de-drift-con-evidently)). |
+| `make retrain` | `mlflow run . -e retrain --env-manager local` | **Versión alternativa de P1 (Entrega 05).** Reentrena el `@champion` con datos hasta agosto de 2026 y lo registra como `@challenger` del mismo modelo. Necesita el `.env`. |
+| `make ab-test` | `mlflow run . -e ab_test --env-manager local` | **A/B testing de P1 (Entrega 05).** Compara `@champion` y `@challenger` en septiembre de 2026 y escribe la tabla en `reports/ab_test/p1_ab_test.md`. Necesita el `.env`. |
 | `make test` | `python -m pytest -v` | **Pruebas automatizadas.** Ejecuta la suite de pruebas en `tests/` con PyTest (casos normales y casos límite). |
 | `make train` | Los tres comandos de [Comandos de la entrega](#comandos-de-la-entrega) | **Modelo elegido de cada pregunta**, el registrado como `champion` en el [Model Registry](#model-registry): `hgb_poisson` en P1, `hgb_threshold` en P2 y el *baseline* K-Means con k = 4 en P3. Construye la tabla de la pregunta, entrena con partición cronológica, evalúa, guarda el modelo en `models/` y registra el *run* en el experimento de la pregunta. |
 | `make baselines` | los tres comandos anteriores | **Experimento base.** Un *run* `baseline` por pregunta. |
@@ -437,13 +439,15 @@ Git, el punto de entrada, el entorno y los parámetros. Con eso, cualquier *run*
 desde un clon limpio con el comando que lo creó. Las rutas, las fechas de la partición y la
 semilla no aparecen en el `MLproject`: salen de `config.py`.
 
-Tres puntos de entrada:
+Cinco puntos de entrada:
 
 | Punto de entrada | Ejecuta | Parámetros (`-P`) |
 |---|---|---|
 | `ingest` | `python -m mibici.dataset` | Ninguno: la versión de datos la fija `datapackage.json`. |
 | `train` | `python -m mibici.modeling.train run --question {question} --model {model} ...` | `question` (`p1`, `p2` o `p3`; por defecto `p1`), `model` (por defecto `baseline`) y los hiperparámetros `alpha`, `c`, `learning_rate`, `max_iter`, `max_leaf_nodes` y `n_clusters`. Un hiperparámetro que no se pasa toma su valor de `MODEL_DEFAULTS` en `config.py`. |
 | `search` | `python -m mibici.modeling.train search --question {question} --model {model}` | `question` y `model`: búsqueda con *nested runs* sobre la rejilla de `SEARCH_GRIDS` en `config.py`. |
+| `retrain` | `python -m mibici.modeling.ab_test retrain` | `question` (solo `p1`, el valor por defecto): elige el experimento. Versión alternativa de P1 (`make retrain`, ver *Versión alternativa y A/B testing de P1*). |
+| `ab_test` | `python -m mibici.modeling.ab_test compare` | `question` (solo `p1`): A/B testing de `@champion` contra `@challenger` (`make ab-test`). No mueve aliases. |
 
 ### Comandos de la entrega
 
@@ -954,6 +958,30 @@ make drift KNOWN=1 SUFFIX=conocidas                                   # sin las 
 make drift REF_START=2025-09-01 REF_END=2025-10-01 SUFFIX=mismo_mes   # contra septiembre de 2025
 ```
 
+### Versión alternativa y A/B testing de P1
+
+`mibici/modeling/ab_test.py` cubre los pasos 4 y 5 de la entrega con el modelo de P1:
+
+- **`make retrain`** toma el `@champion` de `mibici-equipo10-p1-demanda`, lo reentrena con los
+  mismos hiperparámetros y los datos de septiembre de 2024 a agosto de 2026 (`RETRAIN_START` y
+  `RETRAIN_END` en `config.py`), lo registra como una versión nueva del mismo modelo y le pone
+  el alias `@challenger`. Solo cambia la ventana de entrenamiento, que ahora incluye las
+  estaciones que abrieron después de febrero de 2026.
+- **`make ab-test`** hace que las dos versiones predigan las mismas filas de septiembre de 2026,
+  que ninguna vio al entrenar, y compara MAE y RMSE en todas las estaciones, en las que el
+  `@champion` conoció y en las nuevas. La diferencia de MAE lleva un intervalo de confianza del
+  95 % por *bootstrap* de días (`AB_TEST_BOOTSTRAP_SAMPLES`); el `@challenger` gana solo si todo
+  el intervalo es negativo. Escribe la tabla en `reports/ab_test/p1_ab_test.md` (y `.csv`) y la
+  registra como un *run* de `mibici-p1-demanda`.
+
+Los dos comandos corren con el MLflow Project (`mlflow run . -e retrain` y `-e ab_test`), igual
+que `make train`, y usan el `.env` del servidor del equipo y los conjuntos de `make monitor-data`.
+El *run* de `make retrain` repite los parámetros del modelo del *run* del `@champion` (`model`,
+`estimador`, `variables`, `hp_*`…) y cambia solo las fechas (`fin_entrenamiento`,
+`inicio_prueba` y `fin_datos`), así que en la vista *Compare* de MLflow las dos versiones se
+comparan parámetro a parámetro. Para dejar vigente al ganador:
+`python -m mibici.modeling.ab_test compare --promote`.
+
 ## Estructura del proyecto
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
@@ -961,7 +989,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 
 ```
 ├── Makefile              <- Reglas: data, train, baselines, run, search, mlflow-ui, snapshot, validate, lint, format, entrega01, entrega02, infra-*, mlflow-password
-├── MLproject             <- MLflow Project: entorno (python_env.yaml) y puntos de entrada `ingest`, `train` y `search`
+├── MLproject             <- MLflow Project: entorno (python_env.yaml) y puntos de entrada `ingest`, `train`, `search`, `retrain` y `ab_test`
 ├── python_env.yaml       <- Entorno del MLflow Project: Python 3.12 y `-r requirements.txt` (sin repetir versiones)
 ├── README.md             <- Este documento
 ├── pyproject.toml        <- Metadatos del paquete `mibici`, plugin de MLflow (experimento por pregunta) y configuración de Ruff
@@ -1002,6 +1030,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │
 ├── tests                 <- Pruebas automatizadas con PyTest y DeepChecks
 │   ├── __init__.py
+│   ├── test_ab_test.py   <- Pruebas de la versión alternativa y el A/B testing de P1
 │   ├── test_api.py       <- Pruebas de los endpoints /health y /predict de la API REST
 │   ├── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
 │   ├── test_drift.py     <- Pruebas del reporte de drift con Evidently
@@ -1024,6 +1053,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── validation.py     <- Validación de integridad y drift tabular con DeepChecks (P1, P2 y P3)
     └── modeling
         ├── __init__.py
+        ├── ab_test.py    <- Versión alternativa de P1 (@challenger) y A/B testing contra @champion
         ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
         ├── candidates.py <- Catálogo de modelos de cada pregunta (baseline y candidatos)
         ├── registry.py   <- Carga, caché en memoria y descarga de modelos desde el Model Registry
@@ -1089,6 +1119,7 @@ cada una de sus reglas.
 | `test_api.py` | `GET /health` y `POST /predict/p1`, `/predict/p2` y `/predict/p3` con modelos falsos | `/health` informa los tres modelos; cada endpoint responde 200 con su predicción y pasa las variables al modelo en el orden de `P1_FEATURES`, `P2_FEATURES` y `P3_FEATURES` | Responde 422 sin llegar al modelo ante 13 peticiones inválidas (hora sin servicio o fuera de rango, fin de semana incoherente, viajes negativos, texto en lugar de número, variables faltantes o de más, intervalo fuera de 0..7, capacidad 0, porcentajes de P3 que no suman 100 % y balances fuera de [-1, 1]); una predicción negativa de P1 se devuelve como 0 |
 | `test_monitoring_data.py` | `prepare_monitoring_data`, `ingest_production_data`, `build_p3_table` | Construye los conjuntos `reference` y `current` con las columnas exactas de P1, P2 y P3, conserva la continuidad de rezagos desde agosto y limpia el CSV de producción en un Parquet separado | Rechaza preguntas desconocidas, ventanas de fechas vacías o rangos inválidos en P3 |
 | `test_drift.py` | `build_drift_report`, `summarize_drift`, `save_drift_report` | Escribe el HTML y el CSV de P1, P2 y P3 con una fila por variable; marca con drift las mismas variables que cuenta Evidently, con distancias (P1) y con p-values (P3), y detecta el aumento de demanda de los datos sintéticos | Sin drift cuando el periodo actual es igual al de referencia; acepta las variables categóricas guardadas como `int8`, que Evidently no acepta sin convertir |
+| `test_ab_test.py` | `retrain_challenger`, `register_challenger`, `run_ab_test`, `paired_bootstrap` | Registra la versión alternativa como versión 2 del mismo modelo con `@challenger` y los mismos hiperparámetros; su *run* repite los parámetros del modelo del `@champion` con sus propias fechas y, bajo `mlflow run`, continúa el *run* que este creó; evalúa las dos versiones en las mismas filas del periodo actual y escribe la tabla en Markdown, CSV y un *run*; da la victoria a una versión claramente mejor | Conserva `@champion` cuando las dos versiones empatan; el intervalo del *bootstrap* es reproducible con la misma semilla; separa bien estaciones conocidas y nuevas; los puntos de entrada `retrain` y `ab_test` van al experimento de P1 |
 
 Para correr un solo archivo:
 

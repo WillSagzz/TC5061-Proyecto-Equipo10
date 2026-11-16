@@ -35,3 +35,18 @@ entry_points:
       question: {type: string, default: p1}
       model: {type: string, default: hgb}
     command: "python -m mibici.modeling.train search --question {question} --model {model}"
+
+  # Entrega 05 · Versión alternativa de P1: reentrena @champion con datos hasta agosto de 2026
+  # y la registra como @challenger (make retrain). Solo existe para P1: question sirve para
+  # que el proyecto elija el experimento de P1.
+  retrain:
+    parameters:
+      question: {type: string, default: p1}
+    command: "python -m mibici.modeling.ab_test retrain"
+
+  # Entrega 05 · A/B testing de @champion contra @challenger en septiembre de 2026, sin mover
+  # aliases (make ab-test). Para promover al ganador: python -m mibici.modeling.ab_test compare --promote
+  ab_test:
+    parameters:
+      question: {type: string, default: p1}
+    command: "python -m mibici.modeling.ab_test compare"

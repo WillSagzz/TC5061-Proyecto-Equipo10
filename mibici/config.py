@@ -220,3 +220,14 @@ PRODUCTION_TRIPS_PATH = PROCESSED_DATA_DIR / "meses_produccion.parquet"
 EVIDENTLY_REPORTS_DIR = REPORTS_DIR / "evidently"
 EVIDENTLY_SAMPLE_SIZE = 50_000  # muestra determinista máxima para reportes de Evidently
 DRIFT_SHARE_THRESHOLD = 0.50  # fracción de variables con drift para declarar drift del conjunto
+
+# =============================================================================
+# Versión alternativa y A/B testing de P1 (Entrega 05)
+# =============================================================================
+CHAMPION_ALIAS = "champion"  # versión vigente en el Model Registry
+CHALLENGER_ALIAS = "challenger"  # versión alternativa que se compara contra la vigente
+RETRAIN_START = TRAIN_START  # la versión alternativa se entrena desde el mismo inicio...
+RETRAIN_END = CURRENT_START  # ...hasta agosto de 2026 (fin excluido): no ve el periodo actual
+AB_TEST_BOOTSTRAP_SAMPLES = 1_000  # remuestreos por día para el intervalo de la diferencia de MAE
+AB_TEST_CONFIDENCE = 0.95  # nivel del intervalo de confianza del bootstrap
+AB_TEST_REPORTS_DIR = REPORTS_DIR / "ab_test"

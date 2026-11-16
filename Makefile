@@ -116,6 +116,16 @@ monitor-data:
 drift:
 	$(PYTHON_INTERPRETER) -m mibici.drift --question $(or $(Q),all) $(if $(SYNTHETIC),--synthetic) $(if $(REF_START),--reference-start $(REF_START)) $(if $(REF_END),--reference-end $(REF_END)) $(if $(KNOWN),--known-stations-only) $(if $(SUFFIX),--suffix $(SUFFIX))
 
+## Retrain P1 @champion with data up to Aug 2026 and register it as @challenger (needs .env)
+.PHONY: retrain
+retrain:
+	$(MLFLOW_RUN) -e retrain
+
+## A/B test of P1 @champion vs @challenger on Sep 2026; tables in reports/ab_test/
+.PHONY: ab-test
+ab-test:
+	$(MLFLOW_RUN) -e ab_test
+
 ## Run automated unit and data validation tests with PyTest
 .PHONY: test
 test:
