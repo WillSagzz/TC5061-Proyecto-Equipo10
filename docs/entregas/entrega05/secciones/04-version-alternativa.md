@@ -1,7 +1,11 @@
 # Versión alternativa del modelo
 
-<div class="pendiente">
+La versión alternativa se generó para P1 (demanda por estación y hora), el modelo que sirve por defecto la API del proyecto. Es el mismo `HistGradientBoostingRegressor` con pérdida de Poisson del `@champion`, con los mismos hiperparámetros (`learning_rate=0.1`, `max_leaf_nodes=127`), reentrenado con seis meses más de datos. Está registrada en el Model Registry de MLflow como la versión 2 del mismo modelo, `mibici-equipo10-p1-demanda`, con el alias `challenger`. Septiembre de 2026 no entra al reentrenamiento porque es el conjunto con el que se comparan las dos versiones. P2 y P3 conservan su `@champion`.
 
-**TODO (#59).** Qué es la versión alternativa, la tabla de las dos particiones, el modelo registrado y el número de versión de `@champion` y de `@challenger` por pregunta, y la captura del Model Registry `registry_01_versiones.png`.
+**Tabla 3.** Versiones de `mibici-equipo10-p1-demanda` en el Model Registry.
 
-</div>
+| | Versión 1 (`@champion`) | Versión 2 (`@challenger`) |
+|---|---|---|
+| Entrenamiento | Septiembre de 2024 a febrero de 2026 (18 meses) | Septiembre de 2024 a agosto de 2026 (24 meses) |
+| Filas de entrenamiento | 3,998,020 | 5,489,700 |
+| Corrida de origen | `P1-candidato-hgb_poisson-learning_rate=0.1-max_iter=200-max_leaf_nodes=127` | `P1-reentrenado-hasta-2026-09-01` |
