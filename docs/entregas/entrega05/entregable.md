@@ -13,7 +13,7 @@ body { font-family: Arial, Helvetica, sans-serif; line-height: 1.15; }
 h1 { font-size: 15pt; margin: 0.9em 0 0.4em; }
 h2 { font-size: 12.5pt; margin: 0.9em 0 0.35em; }
 h1#anexos::before { content: none; }  /* los anexos no llevan número de sección */
-figure img { max-height: 7.5cm; }
+figure img { max-height: 4.6cm; }
 figure { margin: 0.5em 0 0.8em; }
 </style>
 
