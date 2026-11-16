@@ -17,3 +17,6 @@ Se presenta un caso distinto con `P3`, para esta pregunta hay un cambio real en 
 
 En un futuro se debe auditar `station_id` y `capacity`.  No se recomienda reentrenar P1 o P2 solo por estos reportes.
 Para P3, hay que comparar los clusters originales con una nueva segmentación de septiembre.
+
+Por las similitudes observadas entre los datos de referencia y actuales, se puede utilizar una ventana creciente para el entrenamiento del modelo. Al menos en el caso de `P1` y `P2`.
+El factor que puede tener mayor impacto en la mejoría del modelo es el agregar las estaciones más nuevas a su entrenamiento para que adquiera conocimiento de estas.
