@@ -2,7 +2,7 @@
 
 **Sí conviene reentrenar el modelo: cada mes, cuando MiBici publica datos nuevos, y dejando vigente la versión nueva solo si gana la comparación con la anterior.**
 
-La razón es que la red crece. El `@champion` se entrenó con 371 estaciones y en septiembre operaban 468. Por eso el drift de P1 está en `station_id` y `capacity`, mientras que la demanda y las variables históricas no cambian (sección 3). El A/B lo confirma: la versión reentrenada mejora el MAE 7.5 % en las estaciones nuevas y 0.3 % en las conocidas (Tabla 4). El reporte no declara drift del conjunto en P1 porque esa regla cuenta columnas y pide que cambie la mitad, y el crecimiento de la red toca dos de once. Contar columnas no mide cuánto afecta un cambio al modelo; el A/B muestra que este sí lo afecta.
+La razón es que la red crece. El `@champion` se entrenó con 371 estaciones y en septiembre operaban 468. Por eso el drift de P1 está en `station_id` y `capacity`, mientras que la demanda y las variables históricas no cambian (sección 3). El A/B lo confirma: la versión reentrenada mejora el MAE 7.5 % en las estaciones nuevas y 0.3 % en las conocidas (Tabla 3). El reporte no declara drift del conjunto en P1 porque esa regla cuenta columnas y pide que cambie la mitad, y el crecimiento de la red toca dos de once. Contar columnas no mide cuánto afecta un cambio al modelo; el A/B muestra que este sí lo afecta.
 
 La mejora total es pequeña: 1.2 % del MAE, con un intervalo de confianza que no incluye el cero. Aun así conviene, porque reentrenar tarda un minuto y cada estación que abre es una más que la versión vigente no conoce.
 

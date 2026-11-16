@@ -2,7 +2,7 @@
 
 Las dos versiones predijeron el mismo conjunto: las 280,760 filas del conjunto actual de P1 (Tabla 1), una por estación y hora de servicio de septiembre de 2026, mes que ninguna vio al entrenarse. Se comparan con las métricas con las que se eligió el `@champion`: el MAE, que es la principal, y el RMSE, en viajes por estación y hora. El resultado se separa en estaciones conocidas, las que ya operaban en el periodo de referencia, y nuevas, las que abrieron después, porque el drift se concentró en `station_id` y `capacity` (sección 3). La comparación está en la corrida `P1-ab-test-v1-vs-v3` del experimento `mibici-p1-demanda` de MLflow.
 
-**Tabla 4.** Versión vigente (`@champion`, versión 1) y versión nueva (`@challenger`, versión 3) de P1 sobre septiembre de 2026.
+**Tabla 3.** Versión vigente (`@champion`, versión 1) y versión nueva (`@challenger`, versión 3) de P1 sobre septiembre de 2026.
 
 | Estaciones | Filas | MAE vigente | MAE nueva | Diferencia de MAE | RMSE vigente | RMSE nueva |
 |---|---:|---:|---:|---:|---:|---:|
