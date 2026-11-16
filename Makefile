@@ -188,6 +188,17 @@ image:
 container:
 	$(PODMAN) run --rm --env-file .env -p 8000:8000 $(IMAGE_NAME)
 
+## Download the three @champion models to models/registry/ and build the image with them
+.PHONY: image-offline
+image-offline:
+	$(PYTHON_INTERPRETER) -m mibici.modeling.registry download --question all
+	$(PODMAN) build -t $(IMAGE_NAME) .
+
+## Run the image built with image-offline without .env: the API loads the packaged models
+.PHONY: container-offline
+container-offline:
+	$(PODMAN) run --rm -p 8000:8000 $(IMAGE_NAME)
+
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01
 entrega01:

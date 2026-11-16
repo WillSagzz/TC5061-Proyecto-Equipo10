@@ -4,6 +4,7 @@
 #   podman run --rm --env-file .env -p 8000:8000 mibici-api        # o: make container
 #
 # Al arrancar, la API carga los tres modelos @champion desde el servidor MLflow del equipo.
+# Para arrancar sin el servidor: make image-offline y make container-offline (ver abajo).
 # Las credenciales (MLFLOW_TRACKING_URI, MLFLOW_TRACKING_USERNAME y MLFLOW_TRACKING_PASSWORD)
 # no se copian a la imagen: .dockerignore excluye .env y se pasan con --env-file al ejecutar.
 
@@ -26,6 +27,12 @@ WORKDIR /app
 COPY requirements.txt pyproject.toml README.md ./
 COPY mibici/ ./mibici/
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Modelos empaquetados (opcional). `make image-offline` descarga los tres modelos @champion a
+# models/registry/ antes de construir, y la imagen los lleva: sin MLFLOW_TRACKING_URI la API
+# los carga de ahí y arranca sin el servidor de MLflow. Con `make image` la carpeta solo trae
+# su .gitkeep y la API los recupera del servidor al arrancar.
+COPY models/ ./models/
 
 # Usuario sin privilegios para ejecutar el servicio. Su HOME y models/registry (donde escribe
 # `python -m mibici.modeling.registry download`) le pertenecen; los artefactos que MLflow

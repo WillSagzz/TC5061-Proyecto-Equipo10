@@ -418,6 +418,8 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make api` | `uvicorn mibici.api:app --reload` | **Ejecución de API REST local**: se ejecuta un servidor de `FastAPI` en el ambiente donde se este ejecutando el comando. |
 | `make image` | `podman build -t mibici-api .` | **Generar imágen de API**: Construye la imágen que empaqueta la aplicación con todas sus dependencias, a partir de la definición encontrada en el archivo `Containerfile`. |
 | `make container` | `podman run --rm --env-file .env -p 8000:8000 mibici-api` | **Ejecutar el contenedor con la API**: Ejecuta el contenedor de la API a partir de la imágen previamente construida con podman. |
+| `make image-offline` | `python -m mibici.modeling.registry download --question all` y `podman build -t mibici-api .` | **Imagen con los modelos empaquetados**: descarga los tres modelos `@champion` a `models/registry/` (necesita el `.env`) y construye la imagen con ellos dentro. |
+| `make container-offline` | `podman run --rm -p 8000:8000 mibici-api` | **Contenedor sin el servidor de MLflow**: ejecuta la imagen de `make image-offline` sin `.env`; la API carga los modelos empaquetados. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
@@ -687,10 +689,11 @@ en `config.py`) mediante `load_registered_model` y `get_registered_model`:
    defecto el alias `@champion` (`models:/<nombre>@champion`) contra el servidor configurado en
    `MLFLOW_TRACKING_URI` y mantiene la instancia en caché en memoria para no descargar el
    artefacto en cada petición HTTP.
-2. **Respaldo local empaquetado (`models/registry/<pregunta>`):** permite descargar previamente
-   el artefacto desde el Model Registry (`download_registered_model`) para empaquetarlo en la
-   imagen del contenedor o iniciar el servicio cuando no se dispone de conexión o credenciales
-   remotas.
+2. **Modelos empaquetados (`models/registry/<pregunta>`):** `download_registered_model` descarga
+   el artefacto del Model Registry a esa carpeta (ignorada por Git). Si `MLFLOW_TRACKING_URI` no
+   está definida, la API carga los modelos de ahí sin consultar el servidor; si está definida y
+   el servidor no responde, los usa como respaldo. `make image-offline` los descarga y los mete
+   en la imagen, para que el contenedor arranque sin el servidor (ver *Contenedor Podman*).
 
 ```bash
 # Comprobar la carga de los tres modelos @champion desde el Model Registry
@@ -712,10 +715,11 @@ La definición del contenedor se encuentra en el archivo `Containerfile` en la r
 4. Copiar archivos para instalación de dependencias
 5. Copiar directorio del proyecto
 6. Instalación de dependencias
-7. Crear usuario con permisos para correr el servidor `FastAPI`
-8. Utilizar el usuario que se acaba de crear, para los siguientes pasos
-9. Exponer el puerto de comunicación del servidor `FastAPI`
-10. Comando de `uvicorn` para la ejecución del servidor `FastAPI`
+7. Copiar los modelos descargados del Model Registry, si existen (`models/registry/`)
+8. Crear usuario con permisos para correr el servidor `FastAPI`
+9. Utilizar el usuario que se acaba de crear, para los siguientes pasos
+10. Exponer el puerto de comunicación del servidor `FastAPI`
+11. Comando de `uvicorn` para la ejecución del servidor `FastAPI`
 
 Se puede levantar el contenedor podman con la API REST de FastAPI mediante el uso de dos comandos `make`:
 ``` bash
@@ -724,6 +728,19 @@ make container
 ```
 
 Notese que es necesario definir el archivo de configuración `.env` para la correcta ejecución del contenedor.
+
+**Sin el servidor de MLflow.** Para que el contenedor arranque sin conexión al servidor del equipo,
+los modelos se empaquetan en la imagen:
+
+``` bash
+make image-offline       # descarga los tres modelos @champion (necesita el .env) y construye la imagen
+make container-offline   # ejecuta el contenedor sin .env: la API carga los modelos de la imagen
+```
+
+En el log del contenedor cada modelo aparece con `MLFLOW_TRACKING_URI no está definida; se carga la
+copia empaquetada`, y `GET /health` responde `"source": "cache"` con la versión descargada. La imagen
+lleva una versión fija de cada modelo: si cambia el `@champion` del Model Registry, hay que volver a
+correr `make image-offline`.
 
 ### Estrategia de despliegue
 
