@@ -29,22 +29,18 @@ Una sección por archivo, para que cada parte se escriba en su propio PR sin con
 | `04-version-alternativa.md` | Versión nueva en el Model Registry | #59 |
 | `05-ab-testing.md` | Tabla comparativa y versión vigente | #59 |
 | `06-recomendacion.md` | Recomendación sobre *Continuous Training* | #60 |
-| `07-anexos.md` | Figuras adicionales y comandos para reproducir | #57 |
+| `07-anexos.md` | Comandos para reproducir el reporte | #57 |
 
-Las secciones sin escribir llevan su título y un recuadro `<div class="pendiente">` (naranja en el
-PDF) con `TODO` y el número de su issue. Se listan con
-`grep -rn TODO docs/entregas/entrega05/secciones/`.
-
-Las capturas van en `figuras/` (`logo_tec.png` es el mismo de las entregas anteriores) y los CSV de
-resumen del drift, en `anexos/`. Los nombres de archivo están en los issues #55 y #59.
+Las capturas del reporte de Evidently están en `figuras/` (`logo_tec.png` es el mismo de las
+entregas anteriores).
 
 ## Antes de entregar
 
-- [ ] No queda ningún `TODO` ni recuadro `pendiente` en el PDF (incluida la fecha de la portada).
+- [ ] El PDF no tiene secciones sin escribir y la portada lleva la fecha de entrega.
 - [ ] Las secciones 01 a 06 ocupan de 3 a 5 cuartillas. Si se pasan, bajar `max-height` de las
       figuras en el bloque `<style>` de `entregable.md` o mover figuras a los anexos.
 - [ ] El PDF contiene las gráficas de Evidently, la tabla comparativa del A/B, la recomendación
       final y el enlace al repositorio.
-- [ ] Las cifras coinciden con los CSV de `anexos/`, con las tablas de `reports/ab_test/` y con el
-      Model Registry.
+- [ ] Las cifras coinciden con los reportes de `reports/evidently/`, con las tablas de
+      `reports/ab_test/` y con el Model Registry.
 - [ ] El PDF se llama `TC5061_Drift_ABTest_Equipo10.pdf`.

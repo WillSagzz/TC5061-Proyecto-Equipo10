@@ -24,8 +24,7 @@
 </tbody>
 </table>
 
-<!-- TODO (#57): poner la fecha de entrega (día en que se sube el PDF a Canvas) -->
-<div class="fecha"><strong>Fecha:</strong> TODO (fecha de entrega)</div>
+<div class="fecha"><strong>Fecha:</strong> 15/11/2026</div>
 <div class="repositorio">Repositorio: <a href="https://github.com/WillSagzz/TC5061-Proyecto-Equipo10">github.com/WillSagzz/TC5061-Proyecto-Equipo10</a></div>
 
 </div>
