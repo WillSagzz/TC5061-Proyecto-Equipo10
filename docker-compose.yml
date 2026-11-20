@@ -1,0 +1,108 @@
+# Orquestación de servicios del proyecto MiBici (Microservicios, CI/CD y FinOps).
+#
+# Levanta con un solo comando el servidor de MLflow (Tracking + Model Registry) y la API REST
+# de inferencia (P1, P2 y P3), compatible con Docker Compose y podman-compose:
+#
+#   docker compose up -d --build        # o: podman-compose up -d --build / make compose-up
+#   docker compose ps                   # verifica estado y healthchecks
+#   docker compose down                 # detiene contenedores conservando volúmenes
+
+services:
+  mlflow:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: mibici-api:latest
+    container_name: mibici-mlflow
+    restart: unless-stopped
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --workers
+      - "1"
+      - --backend-store-uri
+      - sqlite:////mlflow/db/mlflow.db
+      - --serve-artifacts
+      - --artifacts-destination
+      - /mlflow/artifacts
+    environment:
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow,mlflow:5000,localhost,localhost:5000,localhost:${MLFLOW_PORT:-5001},127.0.0.1,127.0.0.1:5000,127.0.0.1:${MLFLOW_PORT:-5001},0.0.0.0:5000"
+      MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
+    ports:
+      - "${MLFLOW_PORT:-5001}:5000"
+    volumes:
+      - mlflow_db:/mlflow/db
+      - mlflow_artifacts:/mlflow/artifacts
+    networks:
+      - mibici-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "${MLFLOW_CPU_LIMIT:-2.0}"
+          memory: "${MLFLOW_MEM_LIMIT:-1G}"
+
+  api:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: mibici-api:latest
+    container_name: mibici-api
+    restart: unless-stopped
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - "python -m mibici.modeling.bootstrap --timeout 180 && exec uvicorn mibici.api:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-1}"
+    environment:
+      MLFLOW_TRACKING_URI: "${API_MLFLOW_TRACKING_URI:-http://mlflow:5000}"
+      MLFLOW_TRACKING_USERNAME: "${API_MLFLOW_TRACKING_USERNAME:-}"
+      MLFLOW_TRACKING_PASSWORD: "${API_MLFLOW_TRACKING_PASSWORD:-}"
+      MIBICI_MODEL_ALIAS: "${MIBICI_MODEL_ALIAS:-champion}"
+      API_WORKERS: "${API_WORKERS:-1}"
+      MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    networks:
+      - mibici-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPU_LIMIT:-2.0}"
+          memory: "${API_MEM_LIMIT:-1G}"
+
+networks:
+  mibici-net:
+    name: mibici-net
+    driver: bridge
+
+volumes:
+  mlflow_db:
+    name: mibici-mlflow-db
+  mlflow_artifacts:
+    name: mibici-mlflow-artifacts

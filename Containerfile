@@ -34,16 +34,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 # su .gitkeep y la API los recupera del servidor al arrancar.
 COPY models/ ./models/
 
-# Usuario sin privilegios para ejecutar el servicio. Su HOME y models/registry (donde escribe
-# `python -m mibici.modeling.registry download`) le pertenecen; los artefactos que MLflow
-# descarga al cargar cada modelo van al directorio temporal del sistema, que ya puede escribir.
+# Usuario sin privilegios para ejecutar el servicio. Su HOME, models/registry (donde escribe
+# `python -m mibici.modeling.registry download`) y /mlflow (donde el servicio `mlflow` de
+# docker-compose.yml monta sus volúmenes persistentes de base de datos y artefactos) le pertenecen.
 RUN useradd --system --create-home --shell /usr/sbin/nologin mibici \
-    && mkdir -p /app/models/registry \
-    && chown -R mibici:mibici /app/models
+    && mkdir -p /app/models/registry /mlflow/db /mlflow/artifacts \
+    && chown -R mibici:mibici /app/models /mlflow
 USER mibici
 
 # Puerto en el que escucha uvicorn; se publica al ejecutar con -p 8000:8000.
 EXPOSE 8000
+
+# Comprobación nativa de salud con la biblioteca estándar (python:3.12-slim no incluye curl).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
 
 # Escucha en todas las interfaces del contenedor para que el puerto publicado llegue al host.
 CMD ["uvicorn", "mibici.api:app", "--host", "0.0.0.0", "--port", "8000"]
