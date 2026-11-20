@@ -14,6 +14,7 @@ services:
       dockerfile: Containerfile
     image: mibici-api:latest
     container_name: mibici-mlflow
+    working_dir: /mlflow
     restart: unless-stopped
     command:
       - mlflow
@@ -31,7 +32,9 @@ services:
       - /mlflow/artifacts
     environment:
       MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow,mlflow:5000,localhost,localhost:5000,localhost:${MLFLOW_PORT:-5001},127.0.0.1,127.0.0.1:5000,127.0.0.1:${MLFLOW_PORT:-5001},0.0.0.0:5000"
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
       MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
+      GIT_PYTHON_REFRESH: "quiet"
     ports:
       - "${MLFLOW_PORT:-5001}:5000"
     volumes:
@@ -53,7 +56,7 @@ services:
       resources:
         limits:
           cpus: "${MLFLOW_CPU_LIMIT:-2.0}"
-          memory: "${MLFLOW_MEM_LIMIT:-1G}"
+          memory: "${MLFLOW_MEM_LIMIT:-3G}"
 
   api:
     build:
@@ -76,6 +79,7 @@ services:
       MIBICI_MODEL_ALIAS: "${MIBICI_MODEL_ALIAS:-champion}"
       API_WORKERS: "${API_WORKERS:-1}"
       MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
+      GIT_PYTHON_REFRESH: "quiet"
     ports:
       - "${API_PORT:-8000}:8000"
     networks:
@@ -94,7 +98,7 @@ services:
       resources:
         limits:
           cpus: "${API_CPU_LIMIT:-2.0}"
-          memory: "${API_MEM_LIMIT:-1G}"
+          memory: "${API_MEM_LIMIT:-2G}"
 
 networks:
   mibici-net:

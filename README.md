@@ -772,7 +772,7 @@ docker stats --no-stream
 make compose-down
 ```
 
-Variables opcionales configurables al invocar o en `.env`: `MLFLOW_PORT` (`5001`), `API_PORT` (`8000`), `API_WORKERS` (`1`), `MIBICI_MODEL_ALIAS` (`champion`), `API_MLFLOW_TRACKING_URI` (`http://mlflow:5000`), `MLFLOW_CPU_LIMIT` / `API_CPU_LIMIT` (`2.0`) y `MLFLOW_MEM_LIMIT` / `API_MEM_LIMIT` (`1G`).
+Variables opcionales configurables al invocar o en `.env`: `MLFLOW_PORT` (`5001`), `API_PORT` (`8000`), `API_WORKERS` (`1`), `MIBICI_MODEL_ALIAS` (`champion`), `API_MLFLOW_TRACKING_URI` (`http://mlflow:5000`), `MLFLOW_CPU_LIMIT` / `API_CPU_LIMIT` (`2.0`) y `MLFLOW_MEM_LIMIT` (`3G`) y `API_MEM_LIMIT` (`2G`).
 
 ### Estrategia de despliegue
 

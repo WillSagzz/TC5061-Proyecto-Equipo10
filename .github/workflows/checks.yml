@@ -151,6 +151,7 @@ jobs:
           done
           echo "Tiempo de espera agotado para los healthchecks de Docker Compose"
           docker compose ps
+          docker inspect mibici-mlflow mibici-api --format '{{.Name}}: status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}'
           docker compose logs
           exit 1
       - name: Validar endpoints /health y /predict (P1, P2 y P3)
