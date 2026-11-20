@@ -1,24 +1,35 @@
-# Chequeos del repositorio en GitHub Actions: estilo, pruebas y seguridad.
+# Pipeline de CI/CD del proyecto MiBici: calidad, seguridad, construcción OCI y orquestación.
 #
-# Corre en cada pull request y en cada push a main. Son los mismos comandos que `make check`
-# ejecuta en local (lint, test y security), separados en un job por herramienta para que la
-# pestaña Checks del PR diga de un vistazo qué falló, más un job que construye la imagen de la
-# API con Podman (`make image`). Ningún job usa continue-on-error: un job rojo de pip-audit
-# significa que alguna dependencia de requirements.txt tiene una vulnerabilidad publicada y hay
-# que actualizarla.
+# Se ejecuta automáticamente en cada pull request hacia main, en cada push a main y bajo demanda
+# (workflow_dispatch). Automatiza en dos etapas:
+#   1. Integración continua (en paralelo): estilo (ruff), pruebas unitarias y de datos (pytest),
+#      análisis estático de seguridad (bandit), auditoría de vulnerabilidades (pip-audit) y
+#      construcción de la imagen OCI con caché de capas en GitHub Actions (Buildx).
+#   2. Verificación de despliegue orquestado (CD / smoke test): una vez aprobados todos los
+#      chequeos previos, levanta MLflow + FastAPI con Docker Compose, espera los healthchecks y
+#      verifica predicciones reales extremo a extremo en /health, /predict/p1, /predict/p2 y
+#      /predict/p3.
 name: checks
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
-# El workflow solo lee el repositorio; no necesita escribir nada.
+# El workflow solo lee el repositorio; no necesita permisos de escritura ni secretos externos.
 permissions:
   contents: read
 
+# Cancela ejecuciones obsoletas de un mismo Pull Request cuando llegan nuevos commits, sin
+# interrumpir corridas sobre la rama principal.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.12"
+  IMAGE_NAME: mibici-api:latest
 
 jobs:
   lint:
@@ -30,6 +41,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: requirements.txt
       - name: Instalar dependencias
         run: python -m pip install -r requirements.txt
       - name: Verificar formato
@@ -46,6 +58,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: requirements.txt
       - name: Instalar dependencias
         run: python -m pip install -r requirements.txt
       # La suite trabaja con datos sintéticos: no descarga los CSV de MiBici ni usa .env.
@@ -61,6 +74,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: requirements.txt
       - name: Instalar dependencias
         run: python -m pip install -r requirements.txt
       # Mismos paths que BANDIT_TARGETS en el Makefile; la configuración está en pyproject.toml.
@@ -76,23 +90,153 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: requirements.txt
       - name: Instalar dependencias
         run: python -m pip install -r requirements.txt
       # Los avisos aceptados por el equipo (security/vulnerabilidades-aceptadas.txt, con su
-      # justificación) se pasan como --ignore-vuln, igual que en `make security`: el job solo
-      # falla ante avisos nuevos.
+      # justificación) se pasan como --ignore-vuln, igual que en `make security`.
       - name: Auditar requirements.txt
         run: >-
           python -m pip_audit -r requirements.txt
           $(grep -o -E '^[A-Z]+-[0-9A-Za-z-]+' security/vulnerabilidades-aceptadas.txt | sed 's/^/--ignore-vuln /')
 
   image:
-    name: podman build (imagen de la API)
+    name: docker build (imagen OCI con caché)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # ubuntu-latest trae Podman preinstalado. Mismo comando que `make image`. Solo construye
-      # la imagen: no ejecuta el contenedor porque al arrancar carga los modelos desde el servidor
-      # MLflow del equipo con las credenciales de .env, y CI no las tiene.
-      - name: Construir la imagen
-        run: podman build -t mibici-api .
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Construir imagen OCI y guardar caché de capas
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          tags: ${{ env.IMAGE_NAME }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verificar imagen construida
+        run: docker image inspect ${{ env.IMAGE_NAME }} --format '{{.RepoTags}} ({{.Size}} bytes)'
+
+  compose:
+    name: docker compose (orquestación e inferencia E2E)
+    runs-on: ubuntu-latest
+    needs: [lint, test, bandit, pip-audit, image]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Cargar imagen OCI desde caché de capas
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          tags: ${{ env.IMAGE_NAME }}
+          load: true
+          cache-from: type=gha
+      - name: Levantar servicios orquestados (MLflow + FastAPI)
+        run: docker compose up -d --no-build
+      - name: Esperar healthchecks de MLflow y FastAPI
+        run: |
+          for attempt in $(seq 1 60); do
+            mlflow_status=$(docker inspect --format '{{.State.Health.Status}}' mibici-mlflow 2>/dev/null || echo "starting")
+            api_status=$(docker inspect --format '{{.State.Health.Status}}' mibici-api 2>/dev/null || echo "starting")
+            echo "Intento ${attempt}/60 -> mlflow=${mlflow_status}, api=${api_status}"
+            if [ "${mlflow_status}" = "healthy" ] && [ "${api_status}" = "healthy" ]; then
+              docker compose ps
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Tiempo de espera agotado para los healthchecks de Docker Compose"
+          docker compose ps
+          docker compose logs
+          exit 1
+      - name: Validar endpoints /health y /predict (P1, P2 y P3)
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+
+          def get_json(url: str) -> dict:
+              with urllib.request.urlopen(url, timeout=10) as resp:
+                  assert resp.status == 200, f"HTTP {resp.status} en {url}"
+                  return json.loads(resp.read().decode("utf-8"))
+
+          def post_json(url: str, payload: dict) -> dict:
+              req = urllib.request.Request(
+                  url,
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  assert resp.status == 200, f"HTTP {resp.status} en {url}"
+                  return json.loads(resp.read().decode("utf-8"))
+
+          with urllib.request.urlopen("http://127.0.0.1:5001/health", timeout=10) as mlflow_resp:
+              assert mlflow_resp.status == 200
+
+          health = get_json("http://127.0.0.1:8000/health")
+          assert health["status"] == "ok"
+          assert len(health["models"]) == 3
+
+          p1 = post_json(
+              "http://127.0.0.1:8000/predict/p1",
+              {
+                  "station_id": 50,
+                  "hour_of_day": 8,
+                  "day_of_week": 1,
+                  "is_weekend": 0,
+                  "capacity": 20,
+                  "departures_lag_24": 14.0,
+                  "departures_lag_168": 12.0,
+                  "arrivals_lag_24": 10.0,
+                  "net_flow_lag_24": -4.0,
+                  "departures_mean_3_lag_24": 11.33,
+              },
+          )
+          assert p1["question"] == "p1" and p1["departures_pred"] >= 0.0
+
+          p2 = post_json(
+              "http://127.0.0.1:8000/predict/p2",
+              {
+                  "station_id": 50,
+                  "interval_of_day": 2,
+                  "day_of_week": 1,
+                  "is_weekend": 0,
+                  "capacity": 20,
+                  "departures_lag_1": 8.0,
+                  "departures_lag_8": 25.0,
+                  "departures_lag_56": 22.0,
+                  "arrivals_lag_1": 5.0,
+                  "arrivals_lag_8": 14.0,
+                  "net_flow_lag_1": -3.0,
+                  "net_flow_lag_8": -11.0,
+                  "departures_mean_3": 9.67,
+              },
+          )
+          assert p2["question"] == "p2" and p2["risk_pred"] in {"vaciarse", "llenarse", "sin_riesgo"}
+
+          p3 = post_json(
+              "http://127.0.0.1:8000/predict/p3",
+              {
+                  "morning_pct": 35.0,
+                  "midday_pct": 25.0,
+                  "afternoon_pct": 28.0,
+                  "night_pct": 12.0,
+                  "weekdays_pct": 78.5,
+                  "log_daily_use_per_dock": 1.42,
+                  "balance_morning": -0.25,
+                  "balance_afternoon": 0.22,
+              },
+          )
+          assert p3["question"] == "p3" and isinstance(p3["group"], int)
+          print("Smoke test E2E OK:", {"p1": p1["departures_pred"], "p2": p2["risk_pred"], "p3": p3["group"]})
+          PY
+      - name: Capturar instantánea de uso de recursos (docker stats)
+        run: docker stats --no-stream
+      - name: Detener servicios y limpiar volúmenes
+        if: always()
+        run: docker compose down -v
