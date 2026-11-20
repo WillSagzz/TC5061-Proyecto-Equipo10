@@ -422,6 +422,10 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make container` | `podman run --rm --env-file .env -p 8000:8000 mibici-api` | **Ejecutar el contenedor con la API**: Ejecuta el contenedor de la API a partir de la imágen previamente construida con podman. |
 | `make image-offline` | `python -m mibici.modeling.registry download --question all` y `podman build -t mibici-api .` | **Imagen con los modelos empaquetados**: descarga los tres modelos `@champion` a `models/registry/` (necesita el `.env`) y construye la imagen con ellos dentro. |
 | `make container-offline` | `podman run --rm -p 8000:8000 mibici-api` | **Contenedor sin el servidor de MLflow**: ejecuta la imagen de `make image-offline` sin `.env`; la API carga los modelos empaquetados. |
+| `make compose-up` | `docker compose up -d --build` (o `podman-compose up -d --build`) | **Levantar sistema orquestado (Entrega 06).** Construye la imagen y levanta en segundo plano el servidor de MLflow (`:5001`) y la API REST (`:8000`) con red dedicada, volúmenes persistentes y *healthchecks*. |
+| `make compose-ps` | `docker compose ps` | **Estado de los servicios.** Muestra los contenedores activos, sus puertos publicados y el estado de salud (`healthy`). |
+| `make compose-logs` | `docker compose logs -f` | **Bitácora de los servicios.** Sigue en tiempo real los logs de `mibici-mlflow` y `mibici-api`. |
+| `make compose-down` | `docker compose down` | **Detener servicios.** Apaga y elimina los contenedores y la red `mibici-net`, conservando los volúmenes persistentes de MLflow. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
@@ -746,6 +750,30 @@ copia empaquetada`, y `GET /health` responde `"source": "cache"` con la versión
 lleva una versión fija de cada modelo: si cambia el `@champion` del Model Registry, hay que volver a
 correr `make image-offline`.
 
+### Orquestación con Docker Compose
+
+[`docker-compose.yml`](docker-compose.yml) levanta con un solo comando la arquitectura operativa completa del proyecto (compatible con Docker Compose y `podman-compose`):
+
+- **`mlflow` (`mibici-mlflow`, puerto `5001` en el host → `5000` interno):** servidor de MLflow Tracking y Model Registry con almacenamiento persistente en los volúmenes nombrados `mibici-mlflow-db` (SQLite) y `mibici-mlflow-artifacts` (`--serve-artifacts`). Se publica en `5001` por defecto para evitar colisiones con AirPlay Receiver (`5000`) en macOS.
+- **`api` (`mibici-api`, puerto `8000`):** espera a que `mlflow` pase su *healthcheck* (`condition: service_healthy`), ejecuta `python -m mibici.modeling.bootstrap` de forma idempotente (si faltan los modelos `@champion` en el Registry local, registra los artefactos descargados en `models/registry/` o entrena modelos sintéticos ligeros en clones limpios/CI) e inicia `uvicorn` sobre la red interna `mibici-net`.
+
+```bash
+# Opcional: descargar antes los 3 modelos @champion reales de Azure (requiere .env)
+python -m mibici.modeling.registry download --question all
+
+# Levantar MLflow ([http://127.0.0.1:5001](http://127.0.0.1:5001)) y FastAPI ([http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)) con un comando
+make compose-up          # equivalente: docker compose up -d --build
+
+# Verificar estado, healthchecks y consumo de recursos en vivo
+make compose-ps
+docker stats --no-stream
+
+# Detener contenedores conservando volúmenes (agrega -v en docker compose down para borrarlos)
+make compose-down
+```
+
+Variables opcionales configurables al invocar o en `.env`: `MLFLOW_PORT` (`5001`), `API_PORT` (`8000`), `API_WORKERS` (`1`), `MIBICI_MODEL_ALIAS` (`champion`), `API_MLFLOW_TRACKING_URI` (`http://mlflow:5000`), `MLFLOW_CPU_LIMIT` / `API_CPU_LIMIT` (`2.0`) y `MLFLOW_MEM_LIMIT` (`3G`) y `API_MEM_LIMIT` (`2G`).
+
 ### Estrategia de despliegue
 
 Se optó por la opción de **inferencia en tiempo real** vía REST.
@@ -988,7 +1016,9 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 (`ccds`, con `include_code_scaffold = Yes`).
 
 ```
-├── Makefile              <- Reglas: data, train, baselines, run, search, mlflow-ui, snapshot, validate, lint, format, entrega01, entrega02, infra-*, mlflow-password
+├── Makefile              <- Reglas: data, train, baselines, run, search, mlflow-ui, snapshot, validate, lint, format, compose-*, check, entrega01..05, infra-*, mlflow-password
+├── Containerfile         <- Imagen OCI sin privilegios (usuario `mibici`) con HEALTHCHECK nativo para API y MLflow
+├── docker-compose.yml    <- Orquestación de MLflow + FastAPI con red bridge, volúmenes persistentes, healthchecks y límites
 ├── MLproject             <- MLflow Project: entorno (python_env.yaml) y puntos de entrada `ingest`, `train`, `search`, `retrain` y `ab_test`
 ├── python_env.yaml       <- Entorno del MLflow Project: Python 3.12 y `-r requirements.txt` (sin repetir versiones)
 ├── README.md             <- Este documento
@@ -1032,6 +1062,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── __init__.py
 │   ├── test_ab_test.py   <- Pruebas de la versión alternativa y el A/B testing de P1
 │   ├── test_api.py       <- Pruebas de los endpoints /health y /predict de la API REST
+│   ├── test_bootstrap.py <- Pruebas de inicialización automática del Model Registry para Compose
 │   ├── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
 │   ├── test_drift.py     <- Pruebas del reporte de drift con Evidently
 │   ├── test_monitoring_data.py <- Pruebas de ingesta de producción y conjuntos de referencia/actual
@@ -1055,6 +1086,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
         ├── __init__.py
         ├── ab_test.py    <- Versión alternativa de P1 (@challenger) y A/B testing contra @champion
         ├── baselines.py  <- Modelos base de P1, P2 y P3 con la interfaz de scikit-learn
+        ├── bootstrap.py  <- Inicialización idempotente del Model Registry local al arrancar Compose
         ├── candidates.py <- Catálogo de modelos de cada pregunta (baseline y candidatos)
         ├── registry.py   <- Carga, caché en memoria y descarga de modelos desde el Model Registry
         ├── thresholds.py <- Umbral de alerta de P2, elegido con validación
@@ -1120,6 +1152,7 @@ cada una de sus reglas.
 | `test_monitoring_data.py` | `prepare_monitoring_data`, `ingest_production_data`, `build_p3_table` | Construye los conjuntos `reference` y `current` con las columnas exactas de P1, P2 y P3, conserva la continuidad de rezagos desde agosto y limpia el CSV de producción en un Parquet separado | Rechaza preguntas desconocidas, ventanas de fechas vacías o rangos inválidos en P3 |
 | `test_drift.py` | `build_drift_report`, `summarize_drift`, `save_drift_report` | Escribe el HTML y el CSV de P1, P2 y P3 con una fila por variable; marca con drift las mismas variables que cuenta Evidently, con distancias (P1) y con p-values (P3), y detecta el aumento de demanda de los datos sintéticos | Sin drift cuando el periodo actual es igual al de referencia; acepta las variables categóricas guardadas como `int8`, que Evidently no acepta sin convertir |
 | `test_ab_test.py` | `retrain_challenger`, `register_challenger`, `run_ab_test`, `paired_bootstrap` | Registra la versión alternativa como versión 2 del mismo modelo con `@challenger` y los mismos hiperparámetros; su *run* repite los parámetros del modelo del `@champion` con sus propias fechas y, bajo `mlflow run`, continúa el *run* que este creó; evalúa las dos versiones en las mismas filas del periodo actual y escribe la tabla en Markdown, CSV y un *run*; da la victoria a una versión claramente mejor | Conserva `@champion` cuando las dos versiones empatan; el intervalo del *bootstrap* es reproducible con la misma semilla; separa bien estaciones conocidas y nuevas; los puntos de entrada `retrain` y `ab_test` van al experimento de P1 |
+| `test_bootstrap.py` | `ensure_registered_models`, `wait_for_mlflow_server` | Registra de forma idempotente los modelos `@champion` de P1, P2 y P3 en un servidor MLflow vacío y prioriza los artefactos locales de `models/registry/` cuando existen | Omite la espera HTTP en `sqlite:///`, valida respuesta 200 en `/health` y lanza `TimeoutError` si el servidor no responde |
 
 Para correr un solo archivo:
 
@@ -1529,16 +1562,16 @@ Al ejecutar un análisis con `bandit` en el proyecto, no se encontró ninguna pr
 
 ### Integración continua
 
-El workflow [`.github/workflows/checks.yml`](.github/workflows/checks.yml) ejecuta en GitHub
-Actions, en cada *pull request* y en cada *push* a `main`, lo mismo que `make check` en local,
-separado en cuatro *jobs* para que la pestaña *Checks* del PR diga de un vistazo qué falló:
+El workflow [`.github/workflows/checks.yml`](.github/workflows/checks.yml) ejecuta automáticamente en GitHub Actions —en cada *pull request*, en cada *push* a `main` y manualmente con `workflow_dispatch`— el pipeline completo de CI/CD con cancelación de corridas obsoletas (`concurrency`), caché de paquetes `pip` y caché de capas Docker Buildx (`type=gha`):
 
-| Job | Comando | Qué verifica |
+| Job | Comando / Acción | Qué verifica |
 |---|---|---|
 | `lint` | `ruff format --check` y `ruff check` | Formato y estilo del código (PEP 8). |
-| `test` | `python -m pytest -v` | La suite de `tests/`; trabaja con datos sintéticos, sin descargar los datos de MiBici ni usar `.env`. |
+| `test` | `python -m pytest -v` | La suite completa de `tests/` con datos sintéticos, sin descargar los CSV de MiBici ni requerir `.env`. |
 | `bandit` | `python -m bandit -c pyproject.toml -r mibici infra/scripts docs/entregas/build.py tests` | Análisis estático de seguridad del código del proyecto. |
-| `pip-audit` | `python -m pip_audit -r requirements.txt --ignore-vuln ...` | Vulnerabilidades publicadas en las versiones fijadas en `requirements.txt`, salvo las aceptadas en `security/vulnerabilidades-aceptadas.txt`. |
+| `pip-audit` | `python -m pip_audit -r requirements.txt --ignore-vuln ...` | Vulnerabilidades publicadas en `requirements.txt`, salvo las aceptadas en `security/vulnerabilidades-aceptadas.txt`. |
+| `image` | `docker/build-push-action@v6` (`Containerfile`, caché `type=gha`) | Construcción reproducible de la imagen OCI `mibici-api:latest` exportando las capas al caché de GitHub Actions. |
+| `compose` | `docker compose up -d --no-build` (`needs` los 5 jobs previos) | Validación E2E del levantamiento orquestado (`mlflow` + `api`), *healthchecks*, predicciones en `/predict/p1`, `/predict/p2` y `/predict/p3`, y registro de `docker stats`. |
 
 Todos corren con Python 3.12 (la versión del proyecto) y ninguno usa `continue-on-error`:
 **un job `pip-audit` rojo significa que alguna dependencia tiene una vulnerabilidad publicada
