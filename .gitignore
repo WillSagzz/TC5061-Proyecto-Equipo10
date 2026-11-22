@@ -34,6 +34,9 @@ reports/evidently/
 # Tablas del A/B testing que escribe `make ab-test`: se regeneran y cada run las guarda
 reports/ab_test/
 
+# Resultados de la prueba de carga que escribe `make load-test` (Locust y docker stats)
+reports/locust/
+
 # Configuración del editor
 .vscode/
 

@@ -230,6 +230,11 @@ compose-ps:
 compose-logs:
 	$(COMPOSE) logs -f
 
+## Load test the API of compose-up with Locust while recording docker stats (~5 min)
+.PHONY: load-test
+load-test:
+	$(PYTHON_INTERPRETER) -m mibici.load_testing.run run
+
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01
 entrega01:
