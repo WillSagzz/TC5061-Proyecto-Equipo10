@@ -426,6 +426,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make compose-ps` | `docker compose ps` | **Estado de los servicios.** Muestra los contenedores activos, sus puertos publicados y el estado de salud (`healthy`). |
 | `make compose-logs` | `docker compose logs -f` | **Bitácora de los servicios.** Sigue en tiempo real los logs de `mibici-mlflow` y `mibici-api`. |
 | `make compose-down` | `docker compose down` | **Detener servicios.** Apaga y elimina los contenedores y la red `mibici-net`, conservando los volúmenes persistentes de MLflow. |
+| `make load-test` | `python -m mibici.load_testing.run run` | **Prueba de carga (Entrega 06).** Con el sistema de `make compose-up` levantado, corre Locust por escalones (10 a 250 usuarios en 6 minutos) mientras guarda `docker stats`, y escribe el reporte de Locust, el resumen por escalón y las figuras en `reports/locust/`. Ver *Prueba de carga con Locust*. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
@@ -774,6 +775,46 @@ make compose-down
 
 Variables opcionales configurables al invocar o en `.env`: `MLFLOW_PORT` (`5001`), `API_PORT` (`8000`), `API_WORKERS` (`1`), `MIBICI_MODEL_ALIAS` (`champion`), `API_MLFLOW_TRACKING_URI` (`http://mlflow:5000`), `MLFLOW_CPU_LIMIT` / `API_CPU_LIMIT` (`2.0`) y `MLFLOW_MEM_LIMIT` (`3G`) y `API_MEM_LIMIT` (`2G`).
 
+### Prueba de carga con Locust
+
+[`mibici/load_testing/locustfile.py`](mibici/load_testing/locustfile.py) simula operadores de
+MiBici que piden predicciones a la API levantada con Compose. Cada usuario simulado manda una
+petición válida y distinta (estación, hora, rezagos), con pesos de 6 a P1, 3 a P2, 1 a P3 y 1 a
+`/health`, y espera entre 0.5 y 1.5 s antes de la siguiente. La carga sube por escalones de un
+minuto (10, 25, 50, 100, 150 y 250 usuarios) para ver en qué punto crece la latencia y aparecen
+errores. Mientras corre Locust, `docker stats` se lee cada segundo para medir la CPU y la memoria
+de `mibici-api` y `mibici-mlflow`. Los escalones, los pesos y las pausas están en `config.py`.
+
+**Hay que usar los modelos reales.** Si `models/registry/` está vacía, `bootstrap.py` registra
+modelos sintéticos más ligeros que los reales y la prueba mediría latencias y costos más bajos de
+lo real; `make load-test` revisa el MLflow de Compose y se detiene si encuentra uno sintético.
+
+```bash
+# 1. Descargar los tres modelos @champion reales (usa el .env del servidor del equipo)
+python -m mibici.modeling.registry download --question all
+
+# 2. Levantar el sistema; si antes se levantó sin los modelos reales, borrar sus volúmenes
+docker compose down -v
+make compose-up
+
+# 3. Correr la prueba (~6 minutos)
+make load-test
+```
+
+Resultados en `reports/locust/` (ignorada por Git):
+
+| Archivo | Contenido |
+|---|---|
+| `locust_reporte.html` | Reporte interactivo de Locust con sus gráficas |
+| `resumen.md`, `resumen_por_escalon.csv` | Por escalón: peticiones por segundo, % de errores, latencia p50/p95/p99, y CPU y memoria de cada contenedor (los números del análisis FinOps) |
+| `resumen_por_endpoint.csv` | Totales por endpoint |
+| `locust_01_desempeno.png`, `locust_02_recursos.png` | Figuras del reporte: usuarios, peticiones, errores y latencia; CPU y memoria |
+| `locust_stats*.csv`, `docker_stats.csv` | Datos crudos de Locust y de `docker stats` |
+
+Para ver la prueba en vivo en el navegador (http://localhost:8089), en lugar de `make load-test`:
+`locust -f mibici/load_testing/locustfile.py --host http://127.0.0.1:8000`.
+`python -m mibici.load_testing.run summarize` vuelve a escribir el resumen y las figuras.
+
 ### Estrategia de despliegue
 
 Se optó por la opción de **inferencia en tiempo real** vía REST.
@@ -1065,6 +1106,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── test_bootstrap.py <- Pruebas de inicialización automática del Model Registry para Compose
 │   ├── test_data_validation.py <- Pruebas de integridad, casos límite y fugas temporales
 │   ├── test_drift.py     <- Pruebas del reporte de drift con Evidently
+│   ├── test_load_testing.py <- Pruebas de las peticiones de Locust y del resumen con docker stats
 │   ├── test_monitoring_data.py <- Pruebas de ingesta de producción y conjuntos de referencia/actual
 │   ├── test_registry.py  <- Pruebas del cargador de modelos desde el Model Registry
 │   └── test_schemas.py   <- Pruebas de los esquemas Pydantic de entrada y salida (P1, P2 y P3)
@@ -1078,6 +1120,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── drift.py          <- Reportes de drift con Evidently: HTML por pregunta y CSV con el drift de cada variable 
     ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`   
     ├── features.py       <- Funciones reutilizables y documentadas de feature engineering
+    ├── load_testing      <- Prueba de carga (Entrega 06): `locustfile.py` (escenario), `payloads.py` (peticiones y escalones), `analysis.py` (docker stats, resumen y figuras) y `run.py` (`make load-test`)
     ├── monitoring.py     <- Ingesta del mes de producción y preparación de conjuntos reference y current
     ├── plots.py          <- Figuras que se registran como artefactos en MLflow
     ├── schemas.py        <- Esquemas Pydantic de validación de entradas y salidas para P1, P2 y P3
@@ -1153,6 +1196,7 @@ cada una de sus reglas.
 | `test_drift.py` | `build_drift_report`, `summarize_drift`, `save_drift_report` | Escribe el HTML y el CSV de P1, P2 y P3 con una fila por variable; marca con drift las mismas variables que cuenta Evidently, con distancias (P1) y con p-values (P3), y detecta el aumento de demanda de los datos sintéticos | Sin drift cuando el periodo actual es igual al de referencia; acepta las variables categóricas guardadas como `int8`, que Evidently no acepta sin convertir |
 | `test_ab_test.py` | `retrain_challenger`, `register_challenger`, `run_ab_test`, `paired_bootstrap` | Registra la versión alternativa como versión 2 del mismo modelo con `@challenger` y los mismos hiperparámetros; su *run* repite los parámetros del modelo del `@champion` con sus propias fechas y, bajo `mlflow run`, continúa el *run* que este creó; evalúa las dos versiones en las mismas filas del periodo actual y escribe la tabla en Markdown, CSV y un *run*; da la victoria a una versión claramente mejor | Conserva `@champion` cuando las dos versiones empatan; el intervalo del *bootstrap* es reproducible con la misma semilla; separa bien estaciones conocidas y nuevas; los puntos de entrada `retrain` y `ab_test` van al experimento de P1 |
 | `test_bootstrap.py` | `ensure_registered_models`, `wait_for_mlflow_server` | Registra de forma idempotente los modelos `@champion` de P1, P2 y P3 en un servidor MLflow vacío y prioriza los artefactos locales de `models/registry/` cuando existen | Omite la espera HTTP en `sqlite:///`, valida respuesta 200 en `/health` y lanza `TimeoutError` si el servidor no responde |
+| `test_load_testing.py` | `p1_payload`, `p2_payload`, `p3_payload`, `users_for`, `parse_docker_stats_line`, `summarize_stages`, `write_summary` | Las peticiones de Locust pasan la validación de la API; una línea de `docker stats` se convierte en CPU (%) y memoria (MiB); el resumen recupera las peticiones por segundo, los errores, la latencia y la CPU de cada escalón y escribe las tablas y las figuras | Las peticiones nunca piden horas sin servicio y se repiten con la misma semilla; la prueba termina después del último escalón; rechaza unidades de memoria desconocidas; sin Docker la prueba sigue y omite la figura de recursos |
 
 Para correr un solo archivo:
 
