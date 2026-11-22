@@ -231,3 +231,25 @@ RETRAIN_END = CURRENT_START  # ...hasta agosto de 2026 (fin excluido): no ve el 
 AB_TEST_BOOTSTRAP_SAMPLES = 1_000  # remuestreos por día para el intervalo de la diferencia de MAE
 AB_TEST_CONFIDENCE = 0.95  # nivel del intervalo de confianza del bootstrap
 AB_TEST_REPORTS_DIR = REPORTS_DIR / "ab_test"
+
+# =============================================================================
+# Prueba de carga de la API con Locust y monitoreo de recursos (Entrega 06)
+# =============================================================================
+# API levantada con `make compose-up`; se puede cambiar con `make load-test HOST=...`
+LOAD_TEST_HOST = os.getenv("MIBICI_LOAD_TEST_HOST", "http://127.0.0.1:8000")
+# MLflow de docker-compose.yml (puerto MLFLOW_PORT): ahí se revisa que los modelos sean reales
+LOAD_TEST_MLFLOW_URI = os.getenv(
+    "MIBICI_LOAD_TEST_MLFLOW_URI", f"http://127.0.0.1:{os.getenv('MLFLOW_PORT', '5001')}"
+)
+# Escalones de carga: (segundo en que termina, usuarios simultáneos). Cada usuario simula a un
+# operador que pide una predicción y espera entre LOAD_TEST_WAIT_SECONDS antes de la siguiente,
+# así que los usuarios equivalen aproximadamente a peticiones por segundo ofrecidas.
+LOAD_TEST_STAGES = ((60, 10), (120, 25), (180, 50), (240, 100), (300, 150), (360, 250))
+LOAD_TEST_SPAWN_RATE = 10  # usuarios nuevos por segundo al subir de escalón
+LOAD_TEST_WAIT_SECONDS = (0.5, 1.5)  # pausa aleatoria entre peticiones de un mismo usuario
+# Peso de cada endpoint: de cada 11 peticiones, 6 son de P1, 3 de P2, 1 de P3 y 1 de /health
+LOAD_TEST_TASK_WEIGHTS = {"p1": 6, "p2": 3, "p3": 1, "health": 1}
+LOAD_TEST_WARMUP_SECONDS = 10  # segundos al inicio de cada escalón que no entran al resumen
+LOAD_TEST_STATS_INTERVAL_SECONDS = 1.0  # pausa entre lecturas de `docker stats`
+LOAD_TEST_CONTAINERS = ("mibici-api", "mibici-mlflow")  # nombres de docker-compose.yml
+LOAD_TEST_REPORTS_DIR = REPORTS_DIR / "locust"
