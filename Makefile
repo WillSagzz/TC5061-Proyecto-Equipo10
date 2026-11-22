@@ -9,9 +9,10 @@ PYTHON_INTERPRETER = python
 # --env-manager local: usa el entorno activado (el gestor por defecto necesita pyenv)
 MLFLOW_RUN = mlflow run . --env-manager local
 
-# Imagen OCI de la API REST (Containerfile). Se construye y ejecuta con Podman; quien tenga
-# otro motor compatible puede cambiarlo al invocar: make image PODMAN=docker
-PODMAN = podman
+# Motor OCI y Compose: usa podman si está instalado y, si no, docker (se puede forzar al invocar:
+# make image PODMAN=docker o make compose-up COMPOSE=podman-compose).
+PODMAN = $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
+COMPOSE = $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; else echo "podman compose"; fi)
 IMAGE_NAME = mibici-api
 
 # Código que analiza bandit (make security); la configuración vive en pyproject.toml [tool.bandit].
@@ -208,6 +209,26 @@ image-offline:
 .PHONY: container-offline
 container-offline:
 	$(PODMAN) run --rm -p 8000:8000 $(IMAGE_NAME)
+
+## Build and start the orchestrated services (MLflow + FastAPI) with Docker/Podman Compose
+.PHONY: compose-up
+compose-up:
+	$(COMPOSE) up -d --build
+
+## Stop and remove Compose containers while keeping persistent MLflow volumes
+.PHONY: compose-down
+compose-down:
+	$(COMPOSE) down
+
+## Show status and healthchecks of the Compose services
+.PHONY: compose-ps
+compose-ps:
+	$(COMPOSE) ps
+
+## Stream logs from the Compose services
+.PHONY: compose-logs
+compose-logs:
+	$(COMPOSE) logs -f
 
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01
