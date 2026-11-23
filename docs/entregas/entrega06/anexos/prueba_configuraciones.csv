@@ -1,0 +1,6 @@
+configuracion,workers,hilos_por_prediccion,usuarios,peticiones_por_segundo,latencia_p50_ms,latencia_p95_ms,mem_mib_api
+actual,1,sin limite,100,39.04,1200,3900,230.9
+dos workers,2,sin limite,100,30.54,1100,6800,415.0
+un hilo,1,1,100,71.18,310,1000,194.5
+dos workers y un hilo,2,1,100,92.76,18,330,402.9
+dos workers y un hilo,2,1,250,92.95,1500,3100,409.6
