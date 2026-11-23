@@ -10,8 +10,8 @@
 <div class="curso">Operaciones de aprendizaje automático (TC5061)</div>
 <div class="grupo">Gpo 10</div>
 
-<div class="tipo">Actividad colaborativa · Entrega 05</div>
-<div class="titulo">Proyecto MiBici: Monitoreo y reporte de drift en el proyecto</div>
+<div class="tipo">Actividad colaborativa · Entrega 06</div>
+<div class="titulo">Proyecto MiBici: Microservicios, CI/CD y FinOps</div>
 
 <div class="equipo">Equipo 10</div>
 
@@ -24,7 +24,7 @@
 </tbody>
 </table>
 
-<div class="fecha"><strong>Fecha:</strong> 15/11/2026</div>
+<div class="fecha"><strong>Fecha:</strong> 22/11/2026</div>
 <div class="repositorio">Repositorio: <a href="https://github.com/WillSagzz/TC5061-Proyecto-Equipo10">github.com/WillSagzz/TC5061-Proyecto-Equipo10</a></div>
 
 </div>

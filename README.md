@@ -432,6 +432,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
 | `make entrega04` | `python docs/entregas/build.py docs/entregas/entrega04` | Compila el reporte de la API REST (Markdown → HTML → PDF) en `docs/entregas/entrega04/build/`. |
 | `make entrega05` | `python docs/entregas/build.py docs/entregas/entrega05` | Compila el reporte de drift y A/B testing (Markdown → HTML → PDF) en `docs/entregas/entrega05/build/`. |
+| `make entrega06` | `python docs/entregas/build.py docs/entregas/entrega06` | Compila el reporte de operación y FinOps (Markdown → HTML → PDF) en `docs/entregas/entrega06/build/`. |
 
 ## Reproducir con el MLflow Project
 
@@ -762,7 +763,7 @@ correr `make image-offline`.
 # Opcional: descargar antes los 3 modelos @champion reales de Azure (requiere .env)
 python -m mibici.modeling.registry download --question all
 
-# Levantar MLflow ([http://127.0.0.1:5001](http://127.0.0.1:5001)) y FastAPI ([http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)) con un comando
+# Levantar MLflow (http://127.0.0.1:5001) y FastAPI (http://127.0.0.1:8000/docs) con un comando
 make compose-up          # equivalente: docker compose up -d --build
 
 # Verificar estado, healthchecks y consumo de recursos en vivo
@@ -814,6 +815,25 @@ Resultados en `reports/locust/` (ignorada por Git):
 Para ver la prueba en vivo en el navegador (http://localhost:8089), en lugar de `make load-test`:
 `locust -f mibici/load_testing/locustfile.py --host http://127.0.0.1:8000`.
 `python -m mibici.load_testing.run summarize` vuelve a escribir el resumen y las figuras.
+
+**Resultados y costo por inferencia.** Las gráficas y las tablas de la corrida del reporte de la
+entrega 06 están versionadas en [`docs/entregas/entrega06/`](docs/entregas/entrega06/) (`figuras/`
+y `anexos/`). En esa corrida la API, con su límite de 2 CPU, respondió sin errores en todos los
+escalones:
+
+| Usuarios | Peticiones/s | p95 | CPU de la API | Memoria de la API |
+|---:|---:|---:|---:|---:|
+| 10 | 9.8 | 17 ms | 28 % | 210 MiB |
+| 25 | 21.6 | 190 ms | 96 % | 224 MiB |
+| 50 a 250 | 38 (saturada) | 1.2 a 8.2 s | 197 % | 235 MiB |
+
+El cuello de botella es la CPU de la API; MLflow no participa en las predicciones. Con una
+instancia de referencia de 2 vCPU y 4 GB (USD 0.0416 por hora), una predicción cuesta USD 0.34
+por millón con la instancia saturada y USD 76 por millón con la demanda de MiBici (unas 400 mil
+predicciones al mes), porque la instancia pasa casi todo el tiempo sin carga. El reporte mide
+además el efecto de usar un hilo por predicción (`OMP_NUM_THREADS=1`) y dos *workers*
+(`API_WORKERS=2`): la misma API atiende 2.4 veces más peticiones. El cálculo completo y
+las optimizaciones están en la sección 4 del reporte (`make entrega06`).
 
 ### Estrategia de despliegue
 
@@ -1057,7 +1077,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 (`ccds`, con `include_code_scaffold = Yes`).
 
 ```
-├── Makefile              <- Reglas: data, train, baselines, run, search, mlflow-ui, snapshot, validate, lint, format, compose-*, check, entrega01..05, infra-*, mlflow-password
+├── Makefile              <- Reglas: data, train, baselines, run, search, mlflow-ui, snapshot, validate, lint, format, compose-*, load-test, check, entrega01..06, infra-*, mlflow-password
 ├── Containerfile         <- Imagen OCI sin privilegios (usuario `mibici`) con HEALTHCHECK nativo para API y MLflow
 ├── docker-compose.yml    <- Orquestación de MLflow + FastAPI con red bridge, volúmenes persistentes, healthchecks y límites
 ├── MLproject             <- MLflow Project: entorno (python_env.yaml) y puntos de entrada `ingest`, `train`, `search`, `retrain` y `ab_test`
@@ -1081,7 +1101,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   │   ├── entrega02     <- Reporte de experimentos con MLflow: secciones en Markdown y capturas
 │   │   ├── entrega03     <- Reporte de pruebas y chequeos de seguridad: secciones en Markdown y capturas de evidencia
 │   │   ├── entrega04     <- Reporte de la API REST en contenedor Podman: secciones en Markdown y capturas del contenedor
-│   │   └── entrega05     <- Reporte de drift y A/B testing: una sección por archivo, figuras de Evidently y anexos
+│   │   ├── entrega05     <- Reporte de drift y A/B testing: una sección por archivo, figuras de Evidently y anexos
+│   │   └── entrega06     <- Reporte de operación y FinOps: Compose, CI/CD, gráficas y datos de la prueba de carga y costo por inferencia
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
 ├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
@@ -1616,6 +1637,18 @@ El workflow [`.github/workflows/checks.yml`](.github/workflows/checks.yml) ejecu
 | `pip-audit` | `python -m pip_audit -r requirements.txt --ignore-vuln ...` | Vulnerabilidades publicadas en `requirements.txt`, salvo las aceptadas en `security/vulnerabilidades-aceptadas.txt`. |
 | `image` | `docker/build-push-action@v6` (`Containerfile`, caché `type=gha`) | Construcción reproducible de la imagen OCI `mibici-api:latest` exportando las capas al caché de GitHub Actions. |
 | `compose` | `docker compose up -d --no-build` (`needs` los 5 jobs previos) | Validación E2E del levantamiento orquestado (`mlflow` + `api`), *healthchecks*, predicciones en `/predict/p1`, `/predict/p2` y `/predict/p3`, y registro de `docker stats`. |
+
+**Cómo ejecutarlo.** No hay que hacer nada aparte de abrir un *pull request* o mezclarlo: el
+*workflow* arranca solo y su resultado aparece en el propio PR y en la pestaña
+[Actions](https://github.com/WillSagzz/TC5061-Proyecto-Equipo10/actions/workflows/checks.yml).
+Para lanzarlo a mano sobre una rama, en esa pestaña se elige *checks* → *Run workflow*, o desde
+la terminal:
+
+```bash
+gh workflow run checks.yml --ref main   # lanza el pipeline sobre main
+gh run watch                            # sigue la corrida hasta que termina
+make check                              # los chequeos de la primera etapa en local: lint, pruebas y seguridad
+```
 
 Todos corren con Python 3.12 (la versión del proyecto) y ninguno usa `continue-on-error`:
 **un job `pip-audit` rojo significa que alguna dependencia tiene una vulnerabilidad publicada
