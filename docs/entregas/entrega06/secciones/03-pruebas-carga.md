@@ -2,7 +2,7 @@
 
 ## Escenario
 
-`mibici/load_testing/locustfile.py` simula operadores de MiBici que consultan la API levantada con Compose, con los tres modelos `@champion` reales. Cada usuario manda una petición válida y distinta cada vez (estación, hora y valores históricos al azar) y espera entre 0.5 y 1.5 segundos antes de la siguiente. De cada 11 peticiones, 6 van a P1, 3 a P2, 1 a P3 y 1 a `/health`. La carga sube por escalones de un minuto, con 10, 25, 50, 100, 150 y 250 usuarios, para ver con cuántos usuarios la API deja de responder a tiempo. Mientras corre Locust, `docker stats` mide la CPU y la memoria de los dos contenedores. Todo se ejecuta con `make load-test`. La prueba corrió en una laptop (Intel Core Ultra 7 155H, 22 CPU lógicos), con Locust en la misma máquina.
+`mibici/load_testing/locustfile.py` simula operadores de MiBici que consultan la API levantada con Compose, con los tres modelos `@champion` reales. Cada usuario manda una petición válida y distinta cada vez (estación, hora y valores históricos al azar) y espera entre 0.5 y 1.5 segundos antes de la siguiente. De cada 11 peticiones, 6 van a P1, 3 a P2, 1 a P3 y 1 a `/health`. La carga sube por escalones de un minuto, con 10, 25, 50, 100, 150 y 250 usuarios, para ver con cuántos usuarios la API deja de responder a tiempo. Mientras corre Locust, `docker stats` mide la CPU y la memoria de los dos contenedores. Todo se ejecuta con `make load-test`. La prueba corrió en una laptop (Intel Core Ultra 7 155H), con Locust en la misma máquina.
 
 ## Resultados
 
@@ -29,6 +29,6 @@
 
 ## Áreas de mejora
 
-- **Cada predicción gasta más CPU de la necesaria.** El contenedor ve las 22 CPU de la máquina, pero solo puede usar 2. Los modelos de P1 y P2 abren un hilo por cada CPU que ven, y esos hilos compiten por las 2 CPU. La sección 4 mide cuánto mejora la API al limitar los hilos.
+- **Cada predicción gasta más CPU de la necesaria.** Los modelos reparten cada predicción entre varios hilos y la API atiende muchas peticiones a la vez, así que hay más hilos que CPU y compiten por las 2 disponibles. La sección 4 mide cuánto mejora la API con un solo hilo por predicción.
 - **P2 es el endpoint más lento:** su p50 en toda la prueba fue de 3.3 s, contra 1.2 s de P1 (anexo). La API evalúa el modelo dos veces por petición, una para la clase y otra para las probabilidades. Con una sola evaluación bastaría.
-- **Con sobrecarga, la espera crece sin tope.** Conviene un tiempo máximo de espera en la API, para responder con un error rápido en lugar de tardar 8 segundos, y agregar réplicas cuando la CPU pase de 70 %.
+- **Con sobrecarga, la espera crece sin tope.** Conviene un tiempo máximo de espera en la API, para responder con un error rápido en lugar de tardar 8 segundos, y agregar réplicas antes de que la CPU llegue a su límite: con 96 % de CPU ya hay picos de varios segundos.

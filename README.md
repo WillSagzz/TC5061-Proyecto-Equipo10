@@ -818,8 +818,8 @@ Para ver la prueba en vivo en el navegador (http://localhost:8089), en lugar de 
 
 **Resultados y costo por inferencia.** Las gráficas y las tablas de la corrida del reporte de la
 entrega 06 están versionadas en [`docs/entregas/entrega06/`](docs/entregas/entrega06/) (`figuras/`
-y `anexos/`); las cifras dependen de la máquina donde corre la prueba. En esa corrida la API, con
-su límite de 2 CPU, respondió sin errores en todos los escalones:
+y `anexos/`). En esa corrida la API, con su límite de 2 CPU, respondió sin errores en todos los
+escalones:
 
 | Usuarios | Peticiones/s | p95 | CPU de la API | Memoria de la API |
 |---:|---:|---:|---:|---:|
@@ -831,8 +831,8 @@ El cuello de botella es la CPU de la API; MLflow no participa en las prediccione
 instancia de referencia de 2 vCPU y 4 GB (USD 0.0416 por hora), una predicción cuesta USD 0.34
 por millón con la instancia saturada y USD 76 por millón con la demanda de MiBici (unas 400 mil
 predicciones al mes), porque la instancia pasa casi todo el tiempo sin carga. El reporte mide
-además el efecto de limitar los hilos de cada predicción (`OMP_NUM_THREADS=1`) y usar dos
-*workers* (`API_WORKERS=2`): la misma API atiende 2.4 veces más peticiones. El cálculo completo y
+además el efecto de usar un hilo por predicción (`OMP_NUM_THREADS=1`) y dos *workers*
+(`API_WORKERS=2`): la misma API atiende 2.4 veces más peticiones. El cálculo completo y
 las optimizaciones están en la sección 4 del reporte (`make entrega06`).
 
 ### Estrategia de despliegue

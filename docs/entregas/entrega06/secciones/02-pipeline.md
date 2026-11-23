@@ -14,8 +14,8 @@ El *workflow* `.github/workflows/checks.yml` corre en cada *pull request*, en ca
 
 La segunda etapa solo corre si pasan los cinco *jobs* de la primera. Es la prueba de despliegue: el mismo `docker-compose.yml` de la sección 1 levanta MLflow y la API en el *runner* y la API responde predicciones.
 
-Tres configuraciones acortan el *pipeline*. Las dependencias de Python se guardan en el caché de `pip`. Las capas de la imagen se guardan en el caché de GitHub Actions, y el *job* `compose` reutiliza la imagen que construyó `image` en lugar de construirla otra vez. Y cuando llegan *commits* nuevos a un *pull request*, la corrida anterior se cancela (`concurrency`).
+Tres configuraciones acortan el *pipeline*. Las dependencias de Python se guardan en el caché de `pip`. Las capas de la imagen se guardan en el caché de GitHub Actions, y el *job* `compose` reutiliza la imagen que construyó `image` en lugar de construirla otra vez. Cuando llegan *commits* nuevos a un *pull request*, la corrida anterior se cancela (`concurrency`).
 
-Las reglas de `main` no dejan mezclar un *pull request* si fallan `lint`, `test`, `bandit` o `pip-audit`. La Figura 1 muestra la corrida más reciente en `main`: los seis *jobs* pasan en 4 minutos y medio.
+Las reglas de `main` no dejan mezclar un *pull request* si fallan `lint`, `test`, `bandit` o `pip-audit`. La Figura 1 muestra una corrida en `main`: los seis *jobs* pasan en 4 minutos y medio.
 
 ![Figura 1. Corrida del workflow en main, con los seis jobs exitosos.](../figuras/actions_01_checks_main.png)

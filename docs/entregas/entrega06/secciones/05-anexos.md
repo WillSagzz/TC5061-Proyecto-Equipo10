@@ -28,7 +28,7 @@ Las gráficas y las tablas de la corrida de este reporte están en `docs/entrega
 
 ## Prueba de configuraciones de la API
 
-Las cuatro configuraciones de la Tabla 5 se corrieron sobre el mismo sistema de Compose. Los *workers* se cambian con la variable `API_WORKERS`. El límite de hilos se agregó al servicio `api` con un archivo adicional de Compose:
+Las cuatro configuraciones de la Tabla 5 se corrieron sobre el mismo sistema de Compose. Los *workers* se cambian con la variable `API_WORKERS`. El hilo por predicción se fijó en el servicio `api` con un archivo adicional de Compose:
 
 ```yaml
 # hilos.yml
@@ -56,8 +56,6 @@ En cada configuración Locust corrió 90 segundos con 100 usuarios fijos del mis
 
 ## Referencias
 
-- Amazon Web Services. (s.f.-a). *Amazon EC2 On-Demand pricing*. Recuperado el 22 de noviembre de 2026, de <https://aws.amazon.com/ec2/pricing/on-demand/>
-- Amazon Web Services. (s.f.-b). *Amazon EC2 T3 instances*. Recuperado el 22 de noviembre de 2026, de <https://aws.amazon.com/ec2/instance-types/t3/>
+- Amazon Web Services. (s.f.). *Amazon EC2 On-Demand pricing*. Recuperado el 22 de noviembre de 2026, de <https://aws.amazon.com/ec2/pricing/on-demand/>
 - CloudPrice. (s.f.). *Standard_B2s specs and pricing*. Recuperado el 22 de noviembre de 2026, de <https://cloudprice.net/vm/Standard_B2s>
 - DigitalOcean. (s.f.). *Droplet pricing*. Recuperado el 22 de noviembre de 2026, de <https://www.digitalocean.com/pricing/droplets>
-- FinOps Foundation. (s.f.). *FinOps for AI overview*. Recuperado el 22 de noviembre de 2026, de <https://www.finops.org/wg/finops-for-ai-overview/>
