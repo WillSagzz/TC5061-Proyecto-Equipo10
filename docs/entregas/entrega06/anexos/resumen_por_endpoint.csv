@@ -1,0 +1,6 @@
+endpoint,peticiones,errores,latencia_p50_ms,latencia_p95_ms,latencia_p99_ms,peticiones_por_segundo
+/health,938,0,630,4800,6200,2.61
+/predict/p1,5936,0,1200,5100,6900,16.49
+/predict/p2,2935,0,3300,7900,9600,8.16
+/predict/p3,1034,0,540,4900,6900,2.87
+Total,10843,0,1400,6300,8200,30.13
