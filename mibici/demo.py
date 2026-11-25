@@ -116,7 +116,14 @@ def compose_status() -> str:
     for command in COMPOSE_COMMANDS:
         try:
             result = subprocess.run(  # nosec B603
-                command, cwd=PROJ_ROOT, capture_output=True, text=True, timeout=30, check=False
+                command,
+                cwd=PROJ_ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             continue
