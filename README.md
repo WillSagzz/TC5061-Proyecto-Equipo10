@@ -427,6 +427,7 @@ Las rutas, fechas y semillas salen de `config.py`.
 | `make compose-logs` | `docker compose logs -f` | **Bitácora de los servicios.** Sigue en tiempo real los logs de `mibici-mlflow` y `mibici-api`. |
 | `make compose-down` | `docker compose down` | **Detener servicios.** Apaga y elimina los contenedores y la red `mibici-net`, conservando los volúmenes persistentes de MLflow. |
 | `make load-test` | `python -m mibici.load_testing.run run` | **Prueba de carga (Entrega 06).** Con el sistema de `make compose-up` levantado, corre Locust por escalones (10 a 250 usuarios en 6 minutos) mientras guarda `docker stats`, y escribe el reporte de Locust, el resumen por escalón y las figuras en `reports/locust/`. Ver *Prueba de carga con Locust*. |
+| `make demo` | `python -m mibici.demo` | **Demo del video de la entrega final.** Con el sistema de `make compose-up` levantado, recorre paso a paso (Enter entre pasos) el estado de Compose, `/health`, una predicción de P1, P2 y P3 con los ejemplos de `/docs`, una petición inválida que responde 422 y los modelos del Model Registry con sus alias, mostrando el `curl` equivalente de cada petición. `--no-pause` lo corre de corrido. |
 | `make entrega01` | `python docs/entregas/build.py docs/entregas/entrega01` | Compila la propuesta (Markdown → HTML → PDF) en `docs/entregas/entrega01/build/`. |
 | `make entrega02` | `python docs/entregas/build.py docs/entregas/entrega02` | Compila el reporte de experimentos con MLflow (Markdown → HTML → PDF) en `docs/entregas/entrega02/build/`. |
 | `make entrega03` | `python docs/entregas/build.py docs/entregas/entrega03` | Compila el reporte de pruebas y chequeos de seguridad (Markdown → HTML → PDF) en `docs/entregas/entrega03/build/`. |
@@ -991,6 +992,19 @@ este ejemplo la probabilidad de vaciarse (0.97) lo supera:
 }
 ```
 
+### Demo del sistema
+
+`mibici/demo.py` recorre el sistema levantado con Compose en el orden que sigue el video de la
+entrega final, mostrando el comando `curl` equivalente de cada petición y su respuesta: estado
+de los contenedores, `/health`, una predicción de P1, P2 y P3 con los ejemplos de `/docs`, una
+petición con hora sin servicio que la API rechaza con 422 y las versiones y alias de los tres
+modelos en el Model Registry de Compose.
+
+```bash
+make demo                           # pausa entre pasos: Enter para seguir (para grabar)
+python -m mibici.demo --no-pause    # de corrido, para comprobar que todo responde
+```
+
 ## Monitoreo de datos y preparación para detección de drift
 
 Para vigilar el comportamiento de los modelos en operación sin alterar la partición congelada de las entregas previas (`datapackage.json`), `mibici/monitoring.py` construye los pares de conjuntos `(reference, current)` para P1, P2 y P3:
@@ -1137,6 +1151,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
     ├── api.py            <- API REST con FastAPI: /health y /predict/p1, /predict/p2 y /predict/p3
     ├── config.py         <- Rutas, fechas, semilla, contrato de datos y parámetros: la única fuente de configuración
     ├── dataset.py        <- Ingesta reproducible: descarga y verifica contra el descriptor, normaliza, limpia y guarda en Parquet
+    ├── demo.py           <- Demo del video de la entrega final (`make demo`): /health, P1, P2, P3, una petición inválida y el Registry
     ├── datapackage.py    <- Versión de los datos: `snapshot` escribe datapackage.json y `validate` lo comprueba con frictionless
     ├── drift.py          <- Reportes de drift con Evidently: HTML por pregunta y CSV con el drift de cada variable 
     ├── experiments.py    <- Convención de MLflow: experimentos por pregunta, nombres de run, etiquetas y el plugin que elige el experimento en `mlflow run`   

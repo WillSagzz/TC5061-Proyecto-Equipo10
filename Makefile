@@ -235,6 +235,11 @@ compose-logs:
 load-test:
 	$(PYTHON_INTERPRETER) -m mibici.load_testing.run run
 
+## Walk through the demo of the final video against compose-up: /health, P1, P2, P3, a 422 and the Registry
+.PHONY: demo
+demo:
+	$(PYTHON_INTERPRETER) -m mibici.demo
+
 ## Compile Entrega 01 (Markdown -> HTML -> PDF) into docs/entregas/entrega01/build/
 .PHONY: entrega01
 entrega01:

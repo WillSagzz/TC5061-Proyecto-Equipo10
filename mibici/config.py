@@ -252,4 +252,7 @@ LOAD_TEST_TASK_WEIGHTS = {"p1": 6, "p2": 3, "p3": 1, "health": 1}
 LOAD_TEST_WARMUP_SECONDS = 10  # segundos al inicio de cada escalón que no entran al resumen
 LOAD_TEST_STATS_INTERVAL_SECONDS = 1.0  # pausa entre lecturas de `docker stats`
 LOAD_TEST_CONTAINERS = ("mibici-api", "mibici-mlflow")  # nombres de docker-compose.yml
+
+# Demo del video de la entrega final (make demo): usa la API y el MLflow de Compose de arriba
+DEMO_TIMEOUT_SECONDS = 10  # espera máxima de cada petición a la API
 LOAD_TEST_REPORTS_DIR = REPORTS_DIR / "locust"
