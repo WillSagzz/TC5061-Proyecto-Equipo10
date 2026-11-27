@@ -650,11 +650,12 @@ Sin `.env`, todo sigue funcionando en modo local, que es el modo para iterar y d
 ## Model Registry
 
 El modelo elegido de cada pregunta está registrado en el Model Registry del servidor
-compartido, con un nombre por pregunta:
+compartido, con un nombre por pregunta. La [Model Card](docs/model_card.md) documenta cada
+modelo: uso previsto, datos, métricas, limitaciones, consideraciones éticas y mantenimiento.
 
 | Pregunta | Modelo registrado | En producción (`@champion`) | Corrida de origen |
 |---|---|---|---|
-| P1 | `mibici-equipo10-p1-demanda` | `hgb_poisson` (`learning_rate=0.1`, `max_leaf_nodes=127`) | `P1-candidato-hgb_poisson-...` en `mibici-p1-demanda` |
+| P1 | `mibici-equipo10-p1-demanda` | `hgb_poisson` (`learning_rate=0.1`, `max_leaf_nodes=127`), versión 3: reentrenada con datos hasta agosto de 2026 y promovida tras ganar el A/B testing de la entrega 05 | `P1-reentrenado-hasta-2026-09-01` en `mibici-p1-demanda` |
 | P2 | `mibici-equipo10-p2-riesgo` | `hgb_threshold` (`learning_rate=0.05`, `max_leaf_nodes=63`; umbrales 0.90 para `vaciarse` y 0.85 para `llenarse`, guardados dentro del modelo) | `P2-candidato-hgb_threshold-...` en `mibici-p2-riesgo` |
 | P3 | `mibici-equipo10-p3-grupos` | El *baseline*: `StandardScaler` + K-Means con k = 4; `@challenger`: K-Means con k = 5 | `P3-baseline-kmeans-k4` en `mibici-p3-perfiles` |
 
@@ -1103,6 +1104,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   │   ├── entrega04     <- Reporte de la API REST en contenedor Podman: secciones en Markdown y capturas del contenedor
 │   │   ├── entrega05     <- Reporte de drift y A/B testing: una sección por archivo, figuras de Evidently y anexos
 │   │   └── entrega06     <- Reporte de operación y FinOps: Compose, CI/CD, gráficas y datos de la prueba de carga y costo por inferencia
+│   ├── model_card.md     <- Model Card de los tres modelos registrados: uso previsto, datos, métricas, limitaciones y mantenimiento
 │   └── mkdocs.yml        <- Sitio mkdocs de la plantilla
 │
 ├── infra                 <- Servidor MLflow compartido en Azure (ver infra/README.md)
@@ -1262,6 +1264,7 @@ Actions conserva la ejecución de los mismos chequeos en cada PR ([Integración 
 | MLflow Tracking | Ligar cada *run* con el código, la pregunta y quien lo ejecutó. | Etiquetas `git_commit`, `pregunta`, `equipo`, `usuario` y `mlflow.user` (usuario del servidor), `familia_modelo` y `etapa`. | Etiquetas del *run*. |
 | MLflow Tracking | Métricas con el conjunto en el nombre. | `test_mae`, `test_recall_vaciarse`, `train_silhouette`, etc. | Métricas del *run*. |
 | MLflow Model Registry | Un modelo registrado por pregunta, con su versión en producción y su linaje. | `mibici-equipo10-p1-demanda`, `-p2-riesgo` y `-p3-grupos`, con descripción, alias `champion` (y `challenger` en P3) y etiquetas `git_commit` y `version_datos` en cada versión. | Pestaña *Models* de la interfaz y el comando de [Model Registry](#model-registry). |
+| Gobernanza | Documentación responsable de cada modelo en producción. | Model Card por pregunta con uso previsto, datos, métricas, limitaciones, consideraciones éticas y ciclo de mantenimiento; se actualiza en el mismo PR que registra una versión o mueve un alias. | [`docs/model_card.md`](docs/model_card.md). |
 | MLflow Tracking | Sin credenciales ni datos personales. | La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento`; `.env` está fuera de Git. | Interfaz de MLflow y código. |
 | Estructura y código | *Notebooks* solo para exploración, con la convención de la plantilla. | La lógica final vive en `mibici/`; los *notebooks* se nombran `numero.version-iniciales-descripcion.ipynb`. | Carpeta `notebooks/`. |
 | Estructura y código | Configuración en un solo lugar. | Rutas, fechas y cortes, semilla, contrato de datos, reglas de limpieza, umbral e intervalo de P2, periodos y grupos de P3 y nombre del experimento en `config.py`; prohibido repetirlos. | `config.py` y revisión de PR. |
